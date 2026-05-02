@@ -1,0 +1,3 @@
+2026-05-02 16:25:14 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:14 [info     ] gateway_request                method=GET path=/api/v1/bookings target=http://localhost:8003/api/v1/bookings trace_id=d726e871-333e-454b-92e8-e5677d28eca7
+2026-05-02 16:25:14 [info     ] gateway_response               method=GET path=/api/v1/bookings status=200 trace_id=d726e871-333e-454b-92e8-e5677d28eca7

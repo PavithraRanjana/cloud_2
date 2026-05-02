@@ -1,0 +1,3 @@
+INFO     pricing_recalculation:handler.py:68 Pricing recalculation started
+INFO     pricing_recalculation:handler.py:87 Found 0 scheduled flights to evaluate
+INFO     pricing_recalculation:handler.py:120 Pricing recalculation complete: 0/0 flights updated

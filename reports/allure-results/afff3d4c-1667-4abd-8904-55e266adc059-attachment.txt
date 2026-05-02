@@ -1,0 +1,14 @@
+INFO     notification_dispatch:handler.py:99 Received 1 SQS record(s)
+INFO     notification_dispatch:handler.py:120 [NOTIFICATION SENT] To: test@example.com | Subject: Booking Confirmation - ALTEST01 | Event: BookingCreated
+INFO     notification_dispatch:handler.py:124 [NOTIFICATION BODY]
+Dear Test User,
+
+Your booking ALTEST01 has been created successfully.
+
+Flight: F001
+Total: EUR 150.00
+
+Please proceed to payment to confirm your booking.
+
+Thank you for choosing AeroLink!
+INFO     notification_dispatch:handler.py:139 Dispatch complete: {"processed": 1, "errors": 0, "total": 1}

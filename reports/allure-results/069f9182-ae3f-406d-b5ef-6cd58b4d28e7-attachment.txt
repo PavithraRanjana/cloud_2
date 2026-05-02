@@ -1,0 +1,2 @@
+INFO     pricing_recalculation:handler.py:68 Pricing recalculation started
+ERROR    pricing_recalculation:handler.py:133 Pricing recalculation failed: DB error

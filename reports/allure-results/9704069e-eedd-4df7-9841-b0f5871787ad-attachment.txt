@@ -1,0 +1,2 @@
+2026-05-02 16:25:31 [info     ] sqs_polling_disabled           msg='SQS polling disabled; Lambda handles dispatch'
+2026-05-02 16:25:31 [info     ] notification_sent              event_type=BookingCreated recipient=unknown subject='Booking Confirmation - N/A'

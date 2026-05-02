@@ -1,0 +1,2 @@
+INFO     notification_dispatch:handler.py:99 Received 0 SQS record(s)
+INFO     notification_dispatch:handler.py:139 Dispatch complete: {"processed": 0, "errors": 0, "total": 0}

@@ -1,0 +1,4 @@
+2026-05-02 16:25:05 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:05 [info     ] notification_sent              event_type=BookingCreated recipient=unknown subject='Booking Confirmation - ALTEST01'
+2026-05-02 16:25:05 [info     ] notification_sent              event_type=PaymentProcessed recipient=unknown subject='Payment Confirmed - Booking B1'
+2026-05-02 16:25:05 [info     ] notification_sent              event_type=CheckInCompleted recipient=unknown subject='Check-In Complete - Seat 12A'

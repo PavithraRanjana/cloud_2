@@ -1,0 +1,264 @@
+services:
+  # ──────────────────────────────────────────────
+  # Infrastructure
+  # ──────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: aerolink
+      POSTGRES_PASSWORD: aerolink
+      POSTGRES_DB: aerolink
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aerolink"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=events,sqs,s3,dynamodb,lambda,iam,logs
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=eu-west-1
+      - LAMBDA_DOCKER_NETWORK=cloud_2_default
+    volumes:
+      - "./infrastructure/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
+      - "./lambdas:/opt/code/localstack/lambdas"
+      - localstack_data:/var/lib/localstack
+
+  # ──────────────────────────────────────────────
+  # API Gateway
+  # ──────────────────────────────────────────────
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=api-gateway
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - FLIGHT_SERVICE_URL=http://flight-service:8002
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - PAYMENT_SERVICE_URL=http://payment-service:8004
+      - BAGGAGE_SERVICE_URL=http://baggage-service:8005
+      - CHECKIN_SERVICE_URL=http://checkin-service:8006
+      - PASSENGER_SERVICE_URL=http://passenger-service:8007
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8008
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      flight-service:
+        condition: service_healthy
+
+  # ──────────────────────────────────────────────
+  # Microservices
+  # ──────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=auth-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  flight-service:
+    build:
+      context: .
+      dockerfile: services/flight-service/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - SERVICE_NAME=flight-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: services/booking-service/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - SERVICE_NAME=booking-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - FLIGHT_SERVICE_URL=http://flight-service:8002
+      - PAYMENT_SERVICE_URL=http://payment-service:8004
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flight-service:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - SERVICE_NAME=payment-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  baggage-service:
+    build:
+      context: .
+      dockerfile: services/baggage-service/Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - SERVICE_NAME=baggage-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/4
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  checkin-service:
+    build:
+      context: .
+      dockerfile: services/checkin-service/Dockerfile
+    ports:
+      - "8006:8006"
+    environment:
+      - SERVICE_NAME=checkin-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/5
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  passenger-service:
+    build:
+      context: .
+      dockerfile: services/passenger-service/Dockerfile
+    ports:
+      - "8007:8007"
+    environment:
+      - SERVICE_NAME=passenger-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - REDIS_URL=redis://redis:6379/6
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    ports:
+      - "8008:8008"
+    environment:
+      - SERVICE_NAME=notification-service
+      - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - REDIS_URL=redis://redis:6379/7
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8008/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  postgres_data:
+  localstack_data:

@@ -1,0 +1,4 @@
+2026-05-02 16:25:12 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:13 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=9c1b663d-7f00-441b-b0cc-6996390307bd
+2026-05-02 16:25:13 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:13 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=9c1b663d-7f00-441b-b0cc-6996390307bd

@@ -1,0 +1,4 @@
+INFO     pricing_recalculation:handler.py:68 Pricing recalculation started
+INFO     pricing_recalculation:handler.py:87 Found 1 scheduled flights to evaluate
+INFO     pricing_recalculation:handler.py:111 Updated AL100: economy 200.00->230.00, business 500.00->575.00, first 1000.00->1150.00
+INFO     pricing_recalculation:handler.py:120 Pricing recalculation complete: 1/1 flights updated

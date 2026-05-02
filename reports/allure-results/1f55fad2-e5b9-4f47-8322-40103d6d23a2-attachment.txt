@@ -1,0 +1,3 @@
+2026-05-02 16:25:19 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:19 [info     ] gateway_request                method=GET path=/api/v1/passengers/profile target=http://localhost:8007/api/v1/passengers/profile trace_id=a8448299-b4c0-4ddd-a995-4cf31764e01c
+2026-05-02 16:25:19 [info     ] gateway_response               method=GET path=/api/v1/passengers/profile status=200 trace_id=a8448299-b4c0-4ddd-a995-4cf31764e01c

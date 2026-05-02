@@ -1,0 +1,1 @@
+2026-05-02 16:25:14 [info     ] redis_connected                url=redis://localhost:6379/0

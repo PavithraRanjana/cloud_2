@@ -1,0 +1,3 @@
+2026-05-02 16:25:18 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:18 [info     ] gateway_request                method=GET path=/api/v1/baggage/BAG-0000000001 target=http://localhost:8005/api/v1/baggage/BAG-0000000001 trace_id=7cc5e1ef-e22f-4322-b707-7f3fb9589a74
+2026-05-02 16:25:18 [info     ] gateway_response               method=GET path=/api/v1/baggage/BAG-0000000001 status=200 trace_id=7cc5e1ef-e22f-4322-b707-7f3fb9589a74

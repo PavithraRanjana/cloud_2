@@ -1,0 +1,2 @@
+2026-05-02 16:25:31 [info     ] sqs_polling_disabled           msg='SQS polling disabled; Lambda handles dispatch'
+2026-05-02 16:25:32 [info     ] notification_created           recipient=test@example.com subject='Test Subject'

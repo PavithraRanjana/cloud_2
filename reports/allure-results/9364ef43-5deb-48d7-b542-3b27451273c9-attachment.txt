@@ -1,0 +1,2 @@
+2026-05-02 16:25:02 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:03 [info     ] cache_populated                key=flights:DUB:LHR:*

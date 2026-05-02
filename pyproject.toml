@@ -1,0 +1,89 @@
+[project]
+name = "aerolink"
+version = "1.0.0"
+description = "AeroLink Airline Microservices Platform"
+requires-python = ">=3.10"
+
+# ─── pytest ───────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    # JUnit XML for SonarQube
+    "--junitxml=reports/junit.xml",
+    # Coverage
+    "--cov=shared",
+    "--cov=services",
+    "--cov=api-gateway",
+    "--cov=lambdas",
+    "--cov-report=xml:reports/coverage.xml",
+    "--cov-report=html:reports/coverage_html",
+    "--cov-report=term-missing",
+    # Allure
+    "--alluredir=reports/allure-results",
+]
+markers = [
+    "integration: integration tests that load multiple services",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pydantic.*",
+    "ignore::DeprecationWarning:fpdf.*",
+    "ignore::RuntimeWarning:.*coroutine.*never awaited.*",
+    "ignore::sqlalchemy.exc.SAWarning",
+]
+
+# ─── coverage ─────────────────────────────────────────────────────
+[tool.coverage.run]
+source = [
+    "shared",
+    "services",
+    "api-gateway",
+    "lambdas",
+]
+omit = [
+    "*/venv/*",
+    "*/__pycache__/*",
+    "tests/*",
+    "*/conftest.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.",
+    "pass",
+    "raise NotImplementedError",
+]
+
+[tool.coverage.xml]
+output = "reports/coverage.xml"
+
+[tool.coverage.html]
+directory = "reports/coverage_html"
+
+# ─── ruff (linting + formatting) ─────────────────────────────────
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["shared", "services", "api-gateway", "lambdas", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shared"]
+
+# ─── mypy (type checking) ────────────────────────────────────────
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

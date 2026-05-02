@@ -1,0 +1,304 @@
+2026-05-02 16:25:27 [info     ] redis_connected                url=redis://localhost:6379/0
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=8f787c5b-6c0f-4329-8c8f-5f9203eee619
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=8f787c5b-6c0f-4329-8c8f-5f9203eee619
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a11d428f-63b4-45d2-ac61-681bf9eca728
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a11d428f-63b4-45d2-ac61-681bf9eca728
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=68ecd14a-5dd5-4945-abf2-ffca9037972b
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=68ecd14a-5dd5-4945-abf2-ffca9037972b
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=1ea1f22a-1433-4bed-96c4-f54851855e9c
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=1ea1f22a-1433-4bed-96c4-f54851855e9c
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=130f48e5-47dd-4694-a151-68bf2aac5b32
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=130f48e5-47dd-4694-a151-68bf2aac5b32
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=5c16e75e-bf0c-47f7-921d-a58b8934945e
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=5c16e75e-bf0c-47f7-921d-a58b8934945e
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=833aa564-f298-45f7-843c-c74b9ca61dfe
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=833aa564-f298-45f7-843c-c74b9ca61dfe
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=e32bf9bc-08e0-4f63-a2ce-3e899ac0ef74
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=e32bf9bc-08e0-4f63-a2ce-3e899ac0ef74
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=ef8edc3b-640c-4233-8907-7b057c32eb3f
+2026-05-02 16:25:27 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:27 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=ef8edc3b-640c-4233-8907-7b057c32eb3f
+2026-05-02 16:25:27 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=af78b3c7-d46b-489c-b596-af849c32407a
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=af78b3c7-d46b-489c-b596-af849c32407a
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=0375b8d6-5b69-49dd-a606-899ccc4b1841
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=0375b8d6-5b69-49dd-a606-899ccc4b1841
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a81727b9-1e50-4f68-895c-c6ad8a64b762
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a81727b9-1e50-4f68-895c-c6ad8a64b762
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=80c7b806-4b96-48a3-bafb-6e4a1cf08834
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=80c7b806-4b96-48a3-bafb-6e4a1cf08834
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=dbb5049b-62a4-4fa5-bcdc-c4517050c97f
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=dbb5049b-62a4-4fa5-bcdc-c4517050c97f
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=e8a08b1b-7e60-4d03-aa3a-36730afb7dcd
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=e8a08b1b-7e60-4d03-aa3a-36730afb7dcd
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=c5d07b8c-19f3-4156-8f63-62f3aa3b3d9a
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=c5d07b8c-19f3-4156-8f63-62f3aa3b3d9a
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=0b08b927-6e1d-4304-9e63-84e76e571b7a
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=0b08b927-6e1d-4304-9e63-84e76e571b7a
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=4032f200-d629-4a92-9747-c9962f99ec78
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=4032f200-d629-4a92-9747-c9962f99ec78
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=844a40bc-0a05-451f-bcc7-05824153acbf
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=844a40bc-0a05-451f-bcc7-05824153acbf
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a05a27b5-7231-4fee-9fa6-177775620846
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a05a27b5-7231-4fee-9fa6-177775620846
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=729bd679-0d30-4c34-836a-feb3f4c59682
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=729bd679-0d30-4c34-836a-feb3f4c59682
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=3e957072-9771-4964-9570-4000275e5402
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=3e957072-9771-4964-9570-4000275e5402
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=fa32e887-600f-4dd0-98a4-3425f824ac6e
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=fa32e887-600f-4dd0-98a4-3425f824ac6e
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=92f99620-b2da-4528-8050-239529120e09
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=92f99620-b2da-4528-8050-239529120e09
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=bdef4d80-8a9d-465e-94ef-d361a29304c7
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=bdef4d80-8a9d-465e-94ef-d361a29304c7
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a17cac69-fc0b-40d6-a1ff-1d42af60b398
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a17cac69-fc0b-40d6-a1ff-1d42af60b398
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2de95786-1352-4fd5-a8b0-14d29d332285
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2de95786-1352-4fd5-a8b0-14d29d332285
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=6f90481f-c22d-4fc6-96b6-479e2691033d
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=6f90481f-c22d-4fc6-96b6-479e2691033d
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=59a51e80-4a1a-450d-af5e-7ac59d8ae1ad
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=59a51e80-4a1a-450d-af5e-7ac59d8ae1ad
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=c1915ad6-6cac-4a98-aae7-411e14a33dfc
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=c1915ad6-6cac-4a98-aae7-411e14a33dfc
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=dfa35a9c-dba4-40f0-8f48-c7380694084b
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=dfa35a9c-dba4-40f0-8f48-c7380694084b
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=4e94fb3b-1072-477b-9b91-6cca4cd9b683
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=4e94fb3b-1072-477b-9b91-6cca4cd9b683
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=1395c76c-fff6-416d-94eb-c47b73c948f9
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=1395c76c-fff6-416d-94eb-c47b73c948f9
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2c26db87-10ea-40dc-999a-3eb8449bdb57
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2c26db87-10ea-40dc-999a-3eb8449bdb57
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=86eb930f-c80f-44d2-8248-53e5054baff6
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=86eb930f-c80f-44d2-8248-53e5054baff6
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=fab61795-eeb9-4e5c-a4ed-f9694efc6ffc
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=fab61795-eeb9-4e5c-a4ed-f9694efc6ffc
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=65c8b50e-5948-4ab6-8f96-6af9242fdc75
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=65c8b50e-5948-4ab6-8f96-6af9242fdc75
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=1a54403c-27e2-49dc-9d94-7c6dd6add535
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=1a54403c-27e2-49dc-9d94-7c6dd6add535
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=667a8580-3099-437c-8683-6de755bac768
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=667a8580-3099-437c-8683-6de755bac768
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a8ee3419-db0a-4289-99da-1afc01602b52
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a8ee3419-db0a-4289-99da-1afc01602b52
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=61192018-eb40-4dab-af36-2b88940fce72
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=61192018-eb40-4dab-af36-2b88940fce72
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=7864f179-beb2-4814-ad9c-08aa835f62e9
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=7864f179-beb2-4814-ad9c-08aa835f62e9
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=8227e999-2030-4b5a-a40e-054eeaadfe4c
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=8227e999-2030-4b5a-a40e-054eeaadfe4c
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=264c2317-7018-476e-8ad8-d435ac4465b9
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=264c2317-7018-476e-8ad8-d435ac4465b9
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=92f89406-5766-4d73-a3b2-b844613efc38
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=92f89406-5766-4d73-a3b2-b844613efc38
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a863b773-1c99-4c9f-a245-97032b228adc
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a863b773-1c99-4c9f-a245-97032b228adc
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=528e1297-956b-4788-90b5-cca36a06f97c
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=528e1297-956b-4788-90b5-cca36a06f97c
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=f6457757-89b8-48ad-bc82-58673429ce1e
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=f6457757-89b8-48ad-bc82-58673429ce1e
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2b878ae6-854b-436c-85be-d1a5bec0da3f
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2b878ae6-854b-436c-85be-d1a5bec0da3f
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=fe6cd156-e907-4a77-8acd-c1242a27dfb1
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=fe6cd156-e907-4a77-8acd-c1242a27dfb1
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=f8e63fb6-aefb-436c-8390-8f6983113af3
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=f8e63fb6-aefb-436c-8390-8f6983113af3
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=c6474f59-5f0a-41ca-ab0e-e10b16e8b58b
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=c6474f59-5f0a-41ca-ab0e-e10b16e8b58b
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=23e70555-ee7f-48aa-9708-26fbccc5b1b5
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=23e70555-ee7f-48aa-9708-26fbccc5b1b5
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=3c1e1524-6b73-441f-99dd-e6e95614c431
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=3c1e1524-6b73-441f-99dd-e6e95614c431
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=7540b22e-f0b6-4486-a1f4-7feda3f11615
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=7540b22e-f0b6-4486-a1f4-7feda3f11615
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=b3c906b0-c747-4008-a487-b3baae711109
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=b3c906b0-c747-4008-a487-b3baae711109
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=db398c30-6e22-4a55-81c5-c2465b249050
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=db398c30-6e22-4a55-81c5-c2465b249050
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=d4bd6960-c9d3-439c-b47e-cabc487b141a
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=d4bd6960-c9d3-439c-b47e-cabc487b141a
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=b9f69fb8-66b1-4412-a943-43456b8a2d1e
+2026-05-02 16:25:28 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:28 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=b9f69fb8-66b1-4412-a943-43456b8a2d1e
+2026-05-02 16:25:28 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=176fc355-b389-45ba-85f1-b94aeefdaeb3
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=176fc355-b389-45ba-85f1-b94aeefdaeb3
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=395929dd-ed6f-4e1a-a025-093f7f6ea965
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=395929dd-ed6f-4e1a-a025-093f7f6ea965
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=6d718daa-c604-4a9a-9046-be458ab465bc
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=6d718daa-c604-4a9a-9046-be458ab465bc
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=64cff256-2b08-42a6-8caf-f0e806c13adb
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=64cff256-2b08-42a6-8caf-f0e806c13adb
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=68ea6280-635f-4e0c-899d-ffe504f06f9b
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=68ea6280-635f-4e0c-899d-ffe504f06f9b
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=154a804b-154e-49d3-a006-f0c5d9dd8ca2
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=154a804b-154e-49d3-a006-f0c5d9dd8ca2
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=f2ac69b1-d3cc-439a-8c33-28a01fde7f62
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=f2ac69b1-d3cc-439a-8c33-28a01fde7f62
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=caa6ecef-1896-4785-8b85-10688ff86f48
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=caa6ecef-1896-4785-8b85-10688ff86f48
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=a75abee1-e95d-40f7-a6cd-39d92319c8ac
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=a75abee1-e95d-40f7-a6cd-39d92319c8ac
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=cee6e95f-24b3-4f5f-80c1-067a8dbc5476
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=cee6e95f-24b3-4f5f-80c1-067a8dbc5476
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=32879eb4-91aa-4454-b56a-2572ba923d0e
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=32879eb4-91aa-4454-b56a-2572ba923d0e
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=1fa87a77-35d6-4e96-afba-6ba32641f79e
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=1fa87a77-35d6-4e96-afba-6ba32641f79e
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=e9c73177-26f2-4f51-8ba9-887dc3960b5a
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=e9c73177-26f2-4f51-8ba9-887dc3960b5a
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=3a77b379-5906-4115-8bb1-ac70a9c189c8
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=3a77b379-5906-4115-8bb1-ac70a9c189c8
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=78c858b2-232c-4488-8c10-8057f41b8305
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=78c858b2-232c-4488-8c10-8057f41b8305
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=4a787c25-b58d-4ffe-9ada-7d03d5d1abe9
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=4a787c25-b58d-4ffe-9ada-7d03d5d1abe9
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=f00d916a-4c12-4a40-b7f1-5c3d9a9b4bcb
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=f00d916a-4c12-4a40-b7f1-5c3d9a9b4bcb
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=b01d7e89-db0a-4ecd-8ccb-0f2b097ec105
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=b01d7e89-db0a-4ecd-8ccb-0f2b097ec105
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=72467795-962d-425b-b8c3-bd1276ff34fe
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=72467795-962d-425b-b8c3-bd1276ff34fe
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=f2f14ed8-25cd-4243-9356-86eb23a93846
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=f2f14ed8-25cd-4243-9356-86eb23a93846
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=535e2c02-61d9-42e9-9425-129d0c564955
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=535e2c02-61d9-42e9-9425-129d0c564955
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=ca5cc2d5-43b5-40f4-9296-72dcf8c34e67
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=ca5cc2d5-43b5-40f4-9296-72dcf8c34e67
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2a3b5938-e893-4f01-9c61-0efb322bf422
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2a3b5938-e893-4f01-9c61-0efb322bf422
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2a4f6e44-e800-42f1-ade2-990cd6c0099b
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2a4f6e44-e800-42f1-ade2-990cd6c0099b
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=dc944397-9e72-44cc-a700-c698af900126
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=dc944397-9e72-44cc-a700-c698af900126
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=c8c82d69-9654-4eaa-b3f1-8388c10f68bd
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=c8c82d69-9654-4eaa-b3f1-8388c10f68bd
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=07be1a7c-041e-49a9-8a8d-60c46203f864
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=07be1a7c-041e-49a9-8a8d-60c46203f864
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=e75a598f-00d1-4d0a-b6a6-f5669f067441
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=e75a598f-00d1-4d0a-b6a6-f5669f067441
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=08e2edf8-362f-496f-972f-2d8254d35b7e
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=08e2edf8-362f-496f-972f-2d8254d35b7e
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2c322b20-4490-48be-a118-320448b4c6c9
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2c322b20-4490-48be-a118-320448b4c6c9
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=5b812363-e919-40b2-bb98-3565f17448b6
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=5b812363-e919-40b2-bb98-3565f17448b6
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=2bfa55fc-e4a8-4f10-b814-4637533cc618
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=2bfa55fc-e4a8-4f10-b814-4637533cc618
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=fd402d66-e018-43c8-8336-050079de40c7
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=fd402d66-e018-43c8-8336-050079de40c7
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=ebb1a702-8712-4901-82a6-e005c33824d9
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=ebb1a702-8712-4901-82a6-e005c33824d9
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=bd64481e-1d4a-471a-99cc-366cbca0f038
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=bd64481e-1d4a-471a-99cc-366cbca0f038
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=69fa3c01-1ab1-44e4-a4b7-cf031d480c97
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=69fa3c01-1ab1-44e4-a4b7-cf031d480c97
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=13cea98a-2e8b-4f54-bd30-5ddf2a0e95ff
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=13cea98a-2e8b-4f54-bd30-5ddf2a0e95ff
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=264cac22-dd65-470a-a2ac-51b5b7c79760
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=264cac22-dd65-470a-a2ac-51b5b7c79760
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=65901e1f-540c-419c-a480-ca8ec8f9ae92
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=65901e1f-540c-419c-a480-ca8ec8f9ae92
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=4e2e1b71-4ebb-40f2-a1cb-1bf865d259bf
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=4e2e1b71-4ebb-40f2-a1cb-1bf865d259bf
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=aaf58b4e-96bd-4536-b3de-34ca99a1c4fd
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=aaf58b4e-96bd-4536-b3de-34ca99a1c4fd
+2026-05-02 16:25:29 [info     ] gateway_request                method=GET path=/api/v1/flights target=http://localhost:8002/api/v1/flights trace_id=ba4972b1-5350-4435-832f-c7b34eb53e80
+2026-05-02 16:25:29 [info     ] cache_populated                key=flights:*:*:*
+2026-05-02 16:25:29 [info     ] gateway_response               method=GET path=/api/v1/flights status=200 trace_id=ba4972b1-5350-4435-832f-c7b34eb53e80

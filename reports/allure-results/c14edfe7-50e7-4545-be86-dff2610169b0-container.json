@@ -1,0 +1,1 @@
+{"uuid": "31eb1c75-6153-4d9b-8d95-63ceabaad658", "children": ["10a1bf3c-8bad-4197-b366-f09fc4a8a1d1"], "befores": [{"name": "checkin_app", "status": "passed", "start": 1777719300996, "stop": 1777719301058}], "afters": [{"name": "checkin_app::0", "status": "passed", "start": 1777719301062, "stop": 1777719301071}], "start": 1777719300996, "stop": 1777719301071}

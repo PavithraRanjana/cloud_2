@@ -1,4 +1,0 @@
-2026-05-02 16:25:17 [info     ] redis_connected                url=redis://localhost:6379/0
-2026-05-02 16:25:17 [info     ] gateway_request                method=POST path=/api/v1/payments target=http://localhost:8004/api/v1/payments trace_id=2d97eca2-cf89-4adf-a7c8-792deaf1c430
-2026-05-02 16:25:17 [info     ] event_published                detail_type=PaymentProcessed failed=<MagicMock name='mock.client().put_events().get()' id='4480966640'> source=payment-service
-2026-05-02 16:25:17 [info     ] gateway_response               method=POST path=/api/v1/payments status=201 trace_id=2d97eca2-cf89-4adf-a7c8-792deaf1c430

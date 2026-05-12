@@ -236,3 +236,123 @@ def test_get_boarding_pass(checkin_app):
     assert bp["passenger"] == "Jane Doe"
     assert bp["seat"] == "1A"
     assert bp["status"] == "READY TO BOARD"
+
+
+# ── Health ───────────────────────────────────────────────────────
+
+def test_health_endpoint(checkin_app):
+    c, db, mod = checkin_app
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["service"] == "checkin-service"
+
+
+# ── 404 paths ────────────────────────────────────────────────────
+
+def test_get_checkin_not_found(checkin_app):
+    c, db, mod = checkin_app
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+def test_get_boarding_pass_not_found(checkin_app):
+    c, db, mod = checkin_app
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass")
+    assert resp.status_code == 404
+
+
+# ── Exception silencing ──────────────────────────────────────────
+
+def test_checkin_httpx_error_silenced(checkin_app, auth_headers):
+    """Booking status update httpx failure should not abort check-in."""
+    c, db, mod = checkin_app
+    headers = auth_headers()
+    booking_id = str(uuid.uuid4())
+    flight_id = str(uuid.uuid4())
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+
+    def fake_refresh(obj):
+        obj.id = uuid.uuid4()
+        obj.booking_id = booking_id
+        obj.flight_id = flight_id
+        obj.passenger_name = "Test"
+        obj.seat_number = "7B"
+        obj.boarding_group = "A"
+        obj.gate = None
+        obj.status = MagicMock(value="boarding-pass-issued")
+        obj.boarding_pass_url = f"/api/v1/checkin/{booking_id}/boarding-pass"
+        obj.has_baggage = False
+        obj.created_at = MagicMock()
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+    mod.event_publisher = None
+
+    with patch("httpx.AsyncClient") as mock_httpx:
+        mock_client = AsyncMock()
+        mock_client.put = AsyncMock(side_effect=Exception("booking service down"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.post("/api/v1/checkin", headers=headers, json={
+            "booking_id": booking_id,
+            "flight_id": flight_id,
+            "passenger_name": "Test",
+        })
+    assert resp.status_code == 201
+
+
+def test_checkin_publisher_exception_silenced(checkin_app, auth_headers):
+    """Event publisher failure should not abort check-in."""
+    c, db, mod = checkin_app
+    headers = auth_headers()
+    booking_id = str(uuid.uuid4())
+    flight_id = str(uuid.uuid4())
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+
+    def fake_refresh(obj):
+        obj.id = uuid.uuid4()
+        obj.booking_id = booking_id
+        obj.flight_id = flight_id
+        obj.passenger_name = "Test"
+        obj.seat_number = "8C"
+        obj.boarding_group = "B"
+        obj.gate = None
+        obj.status = MagicMock(value="boarding-pass-issued")
+        obj.boarding_pass_url = f"/api/v1/checkin/{booking_id}/boarding-pass"
+        obj.has_baggage = False
+        obj.created_at = MagicMock()
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+
+    mock_pub = MagicMock()
+    mock_pub.publish.side_effect = Exception("eventbridge down")
+    mod.event_publisher = mock_pub
+
+    with patch("httpx.AsyncClient") as mock_httpx:
+        mock_client = AsyncMock()
+        mock_client.put = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.post("/api/v1/checkin", headers=headers, json={
+            "booking_id": booking_id,
+            "flight_id": flight_id,
+            "passenger_name": "Test",
+        })
+    assert resp.status_code == 201

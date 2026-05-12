@@ -1,2 +1,0 @@
-2026-05-02 16:24:49 [info     ] gateway_request                method=GET path=/api/v1/bookings target=http://localhost:8003/api/v1/bookings trace_id=58e52ccb-06ae-45ea-af67-0e14d27436b4
-2026-05-02 16:24:49 [error    ] service_unavailable            target=http://localhost:8003 trace_id=58e52ccb-06ae-45ea-af67-0e14d27436b4

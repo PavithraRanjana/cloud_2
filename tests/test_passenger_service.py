@@ -368,3 +368,80 @@ def test_list_consents(passenger_app, auth_headers):
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
     assert len(resp.json()) == 1
+
+
+# ── Health ───────────────────────────────────────────────────────
+
+def test_health_endpoint(passenger_app):
+    c, db, mod = passenger_app
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["service"] == "passenger-service"
+
+
+# ── 404 paths ────────────────────────────────────────────────────
+
+def test_get_profile_not_found(passenger_app, auth_headers):
+    c, db, mod = passenger_app
+    headers = auth_headers()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.get("/api/v1/passengers/profile", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_update_profile_not_found(passenger_app, auth_headers):
+    c, db, mod = passenger_app
+    headers = auth_headers()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.put("/api/v1/passengers/profile", headers=headers, json={"meal_preference": "vegan"})
+    assert resp.status_code == 404
+
+
+def test_delete_profile_not_found(passenger_app, auth_headers):
+    c, db, mod = passenger_app
+    headers = auth_headers()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.delete("/api/v1/passengers/profile", headers=headers)
+    assert resp.status_code == 404
+
+
+# ── Unauthenticated access ────────────────────────────────────────
+
+def test_get_profile_unauthenticated(passenger_app):
+    c, db, mod = passenger_app
+    resp = c.get("/api/v1/passengers/profile")
+    assert resp.status_code == 401
+
+
+# ── Validation (422) ─────────────────────────────────────────────
+
+def test_create_profile_missing_required_fields_422(passenger_app, auth_headers):
+    c, db, mod = passenger_app
+    headers = auth_headers()
+    resp = c.post("/api/v1/passengers/profile", headers=headers, json={
+        "first_name": "Alice"
+        # last_name required but omitted
+    })
+    assert resp.status_code == 422
+
+
+def test_grant_consent_missing_required_field_422(passenger_app, auth_headers):
+    c, db, mod = passenger_app
+    headers = auth_headers()
+    resp = c.post("/api/v1/passengers/consent", headers=headers, json={
+        "purpose": "marketing"
+        # granted required but omitted
+    })
+    assert resp.status_code == 422

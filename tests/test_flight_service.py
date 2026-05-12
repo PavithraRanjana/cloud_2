@@ -421,3 +421,255 @@ def test_update_seats_optimistic_lock_conflict(flight_app, sample_flight):
     })
     assert resp.status_code == 409
     assert "Concurrent" in resp.json()["detail"]
+
+
+# ── Health ───────────────────────────────────────────────────────
+
+def test_health_endpoint_with_redis(flight_app):
+    c, db, mod, redis = flight_app
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["service"] == "flight-service"
+    assert body["dependencies"]["redis_cache"] == "healthy"
+
+
+# ── Search – departure_date filter ───────────────────────────────
+
+def test_search_flights_with_departure_date(flight_app, sample_flight):
+    c, db, mod, redis = flight_app
+    redis.get = MagicMock(return_value=None)
+
+    f = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.all.return_value = [f]
+    db.execute.return_value = result_mock
+
+    resp = c.get("/api/v1/flights?departure_date=2026-06-15")
+    assert resp.status_code == 200
+    assert "items" in resp.json()
+
+
+# ── Search – cache populate after DB miss ────────────────────────
+
+def test_search_flights_cache_populate_after_db(flight_app, sample_flight):
+    c, db, mod, redis = flight_app
+    redis.get = MagicMock(return_value=None)
+
+    f = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.all.return_value = [f]
+    db.execute.return_value = result_mock
+
+    c.get("/api/v1/flights?origin=DUB&destination=LHR")
+    redis.setex.assert_called()
+
+
+# ── Search – redis.get raises, falls back to DB ──────────────────
+
+def test_search_flights_redis_exception_falls_back(flight_app, sample_flight):
+    c, db, mod, redis = flight_app
+    redis.get = MagicMock(side_effect=Exception("redis down"))
+
+    f = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.all.return_value = [f]
+    db.execute.return_value = result_mock
+
+    resp = c.get("/api/v1/flights?origin=DUB")
+    assert resp.status_code == 200
+    assert resp.json()["source"] == "database"
+
+
+# ── Get flight – redis.get raises, falls back to DB ──────────────
+
+def test_get_flight_redis_exception_falls_back(flight_app, sample_flight):
+    c, db, mod, redis = flight_app
+    redis.get = MagicMock(side_effect=Exception("redis down"))
+
+    flight = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = flight
+    db.execute.return_value = result_mock
+
+    resp = c.get(f"/api/v1/flights/{flight.id}")
+    assert resp.status_code == 200
+
+
+# ── Get flight – redis.setex raises after DB fetch ───────────────
+
+def test_get_flight_cache_set_exception_silenced(flight_app, sample_flight):
+    c, db, mod, redis = flight_app
+    redis.get = MagicMock(return_value=None)
+    redis.setex = MagicMock(side_effect=Exception("redis write failed"))
+
+    flight = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = flight
+    db.execute.return_value = result_mock
+
+    resp = c.get(f"/api/v1/flights/{flight.id}")
+    assert resp.status_code == 200
+
+
+# ── Update flight – 404 ──────────────────────────────────────────
+
+def test_update_flight_not_found(flight_app, auth_headers):
+    c, db, mod, redis = flight_app
+    headers = auth_headers(role="admin")
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.put(f"/api/v1/flights/{uuid.uuid4()}", headers=headers, json={"gate": "X1"})
+    assert resp.status_code == 404
+
+
+# ── Update flight – status field triggers FlightStatus() ─────────
+
+def test_update_flight_with_status_field(flight_app, auth_headers, sample_flight):
+    c, db, mod, redis = flight_app
+    headers = auth_headers(role="admin")
+
+    flight = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = flight
+    db.execute.return_value = result_mock
+    db.refresh = AsyncMock(side_effect=lambda obj: None)
+    mod.event_publisher = None
+
+    resp = c.put(f"/api/v1/flights/{flight.id}", headers=headers, json={
+        "status": "boarding",
+    })
+    assert resp.status_code == 200
+
+
+# ── Create flight – event publisher ──────────────────────────────
+
+def test_create_flight_with_event_publisher(flight_app, auth_headers, sample_flight):
+    c, db, mod, redis = flight_app
+    headers = auth_headers(role="admin")
+
+    mock_pub = MagicMock()
+    mod.event_publisher = mock_pub
+
+    flight = sample_flight()
+
+    def fake_refresh(obj):
+        obj.id = flight.id
+        obj.flight_number = "AL300"
+        obj.airline = "AeroLink"
+        obj.origin = "DUB"
+        obj.destination = "JFK"
+        obj.departure_date = flight.departure_date
+        obj.departure_time = flight.departure_time
+        obj.arrival_date = flight.arrival_date
+        obj.arrival_time = flight.arrival_time
+        obj.status = flight.status
+        obj.aircraft_type = "B777"
+        obj.available_seats_economy = 200
+        obj.available_seats_business = 40
+        obj.available_seats_first = 16
+        obj.price_economy = 399.99
+        obj.price_business = 1199.99
+        obj.price_first = 2499.99
+        obj.gate = None
+        obj.terminal = None
+        obj.created_at = flight.created_at
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+
+    resp = c.post("/api/v1/flights", headers=headers, json={
+        "flight_number": "AL300",
+        "airline": "AeroLink",
+        "origin": "DUB",
+        "destination": "JFK",
+        "departure_date": "2026-07-01",
+        "departure_time": "09:00:00",
+        "arrival_date": "2026-07-01",
+        "arrival_time": "11:30:00",
+    })
+    assert resp.status_code == 201
+    mock_pub.publish.assert_called_once()
+    assert mock_pub.publish.call_args[0][1] == "FlightScheduleUpdated"
+
+
+# ── Update flight – event publisher ──────────────────────────────
+
+def test_update_flight_with_event_publisher(flight_app, auth_headers, sample_flight):
+    c, db, mod, redis = flight_app
+    headers = auth_headers(role="admin")
+
+    mock_pub = MagicMock()
+    mod.event_publisher = mock_pub
+
+    flight = sample_flight()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = flight
+    db.execute.return_value = result_mock
+    db.refresh = AsyncMock(side_effect=lambda obj: None)
+
+    resp = c.put(f"/api/v1/flights/{flight.id}", headers=headers, json={"gate": "Z9"})
+    assert resp.status_code == 200
+    mock_pub.publish.assert_called_once()
+    assert mock_pub.publish.call_args[0][1] == "FlightScheduleUpdated"
+
+
+# ── Update seats – 404 ──────────────────────────────────────────
+
+def test_update_seats_not_found(flight_app):
+    c, db, mod, redis = flight_app
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.put(f"/api/v1/flights/{uuid.uuid4()}/seats", json={
+        "cabin_class": "economy", "change": -1,
+    })
+    assert resp.status_code == 404
+
+
+# ── Update seats – event publisher ───────────────────────────────
+
+def test_update_seats_with_event_publisher(flight_app, sample_flight):
+    c, db, mod, redis = flight_app
+
+    mock_pub = MagicMock()
+    mod.event_publisher = mock_pub
+
+    flight = sample_flight(available_seats_economy=50, version=2)
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = flight
+    update_result = MagicMock()
+    update_result.rowcount = 1
+    db.execute.side_effect = [result_mock, update_result]
+
+    resp = c.put(f"/api/v1/flights/{flight.id}/seats", json={
+        "cabin_class": "economy", "change": -1,
+    })
+    assert resp.status_code == 200
+    mock_pub.publish.assert_called_once()
+    assert mock_pub.publish.call_args[0][1] == "SeatAvailabilityChanged"
+
+
+# ── _invalidate_cache_for_flight – direct unit tests ─────────────
+
+def test_invalidate_cache_deletes_matching_keys(flight_app, sample_flight):
+    """Cache keys returned by redis.keys() should be deleted."""
+    c, db, mod, redis = flight_app
+    redis.keys = MagicMock(return_value=["flights:DUB:*", "flights:*:LHR:*"])
+
+    flight = sample_flight(origin="DUB", destination="LHR")
+    mod._invalidate_cache_for_flight(flight)
+
+    redis.delete.assert_called()
+
+
+def test_invalidate_cache_exception_silenced(flight_app, sample_flight):
+    """Redis error during cache invalidation should not propagate."""
+    c, db, mod, redis = flight_app
+    redis.keys = MagicMock(side_effect=Exception("redis down"))
+
+    flight = sample_flight()
+    mod._invalidate_cache_for_flight(flight)  # should not raise

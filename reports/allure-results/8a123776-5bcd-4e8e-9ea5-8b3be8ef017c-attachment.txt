@@ -1,2 +1,0 @@
-2026-05-02 16:25:04 [info     ] redis_connected                url=redis://localhost:6379/0
-2026-05-02 16:25:04 [info     ] cache_invalidated              flight_id=a0428787-1932-47df-819d-e6302fc1a2f0

@@ -1,2 +1,0 @@
-2026-05-02 16:25:10 [info     ] redis_connected                url=redis://localhost:6379/0
-2026-05-02 16:25:10 [info     ] notification_sent              event_type=BookingCancelled recipient=unknown subject='Booking Cancelled - ALCAN01'

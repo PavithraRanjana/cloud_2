@@ -1,1 +1,0 @@
-2026-05-02 16:25:32 [info     ] sqs_polling_disabled           msg='SQS polling disabled; Lambda handles dispatch'

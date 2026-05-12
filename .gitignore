@@ -12,3 +12,8 @@ build/
 htmlcov/
 localstack_data/
 postgres_data/
+reports/
+.scannerwork/
+.coverage*
+OpenAPI/
+*.bak

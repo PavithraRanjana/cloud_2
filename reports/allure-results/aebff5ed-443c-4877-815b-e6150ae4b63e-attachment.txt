@@ -1,3 +1,0 @@
-2026-05-02 16:25:19 [info     ] redis_connected                url=redis://localhost:6379/0
-2026-05-02 16:25:19 [info     ] gateway_request                method=GET path=/api/v1/notifications target=http://localhost:8008/api/v1/notifications trace_id=6a68adb9-19e1-4a99-9740-b1f4f55c75b6
-2026-05-02 16:25:19 [info     ] gateway_response               method=GET path=/api/v1/notifications status=200 trace_id=6a68adb9-19e1-4a99-9740-b1f4f55c75b6

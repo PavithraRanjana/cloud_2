@@ -476,3 +476,247 @@ def test_refund_payment_updates_booking(payment_app, auth_headers, sample_paymen
         c.post(f"/api/v1/payments/{p.id}/refund", headers=headers, json={"reason": "Test"})
     # Booking status update should be called
     mock_client.put.assert_called_once()
+
+
+# ── Health ───────────────────────────────────────────────────────
+
+def test_health_endpoint(payment_app):
+    c, db, mod = payment_app
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["service"] == "payment-service"
+
+
+# ── simulate_payment_processing failure path ──────────────────────
+
+def test_simulate_payment_processing_failure_path(payment_app):
+    c, db, mod = payment_app
+    with patch("random.random", return_value=0.99):  # 0.99 >= 0.95 → failure branch
+        success, msg = mod.simulate_payment_processing()
+    assert success is False
+    assert "declined" in msg.lower()
+
+
+# ── Refund 404 ───────────────────────────────────────────────────
+
+def test_refund_payment_not_found(payment_app, auth_headers):
+    c, db, mod = payment_app
+    headers = auth_headers()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.post(f"/api/v1/payments/{uuid.uuid4()}/refund", headers=headers, json={
+        "reason": "Customer request",
+    })
+    assert resp.status_code == 404
+
+
+# ── Exception silencing ──────────────────────────────────────────
+
+def test_process_payment_httpx_exception_silenced(payment_app, auth_headers, sample_payment):
+    """Booking status update httpx failure should not abort the payment response."""
+    c, db, mod = payment_app
+    headers = auth_headers()
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+
+    payment = sample_payment()
+
+    def fake_refresh(obj):
+        obj.id = payment.id
+        obj.booking_id = payment.booking_id
+        obj.user_id = payment.user_id
+        obj.amount = 99.0
+        obj.currency = "EUR"
+        obj.status = MagicMock(value="completed")
+        obj.payment_method = MagicMock(value="credit-card")
+        obj.idempotency_key = "idem-httpx-exc"
+        obj.transaction_ref = "TXN-HTTPX"
+        obj.failure_reason = None
+        obj.card_token = None
+        obj.card_last_four = None
+        obj.created_at = payment.created_at
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+
+    with patch.object(mod, "simulate_payment_processing", return_value=(True, "TXN-HTTPX")), \
+         patch("httpx.AsyncClient") as mock_httpx, \
+         patch.object(mod, "record_audit", new_callable=AsyncMock):
+        mock_client = AsyncMock()
+        mock_client.put = AsyncMock(side_effect=Exception("booking service down"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.post("/api/v1/payments", headers=headers, json={
+            "booking_id": str(payment.booking_id),
+            "amount": 99.0,
+            "idempotency_key": "idem-httpx-exc",
+        })
+    assert resp.status_code == 201
+
+
+def test_process_payment_publisher_exception_silenced(payment_app, auth_headers, sample_payment):
+    """Event publisher failure during success path should not abort the payment."""
+    c, db, mod = payment_app
+    headers = auth_headers()
+
+    mock_pub = MagicMock()
+    mock_pub.publish.side_effect = Exception("eventbridge down")
+    mod.event_publisher = mock_pub
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+
+    payment = sample_payment()
+
+    def fake_refresh(obj):
+        obj.id = payment.id
+        obj.booking_id = payment.booking_id
+        obj.user_id = payment.user_id
+        obj.amount = 150.0
+        obj.currency = "EUR"
+        obj.status = MagicMock(value="completed")
+        obj.payment_method = MagicMock(value="credit-card")
+        obj.idempotency_key = "idem-pub-ok"
+        obj.transaction_ref = "TXN-PUB-OK"
+        obj.failure_reason = None
+        obj.card_token = None
+        obj.card_last_four = None
+        obj.created_at = payment.created_at
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+
+    with patch.object(mod, "simulate_payment_processing", return_value=(True, "TXN-PUB-OK")), \
+         patch("httpx.AsyncClient") as mock_httpx, \
+         patch.object(mod, "record_audit", new_callable=AsyncMock):
+        mock_client = AsyncMock()
+        mock_client.put = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.post("/api/v1/payments", headers=headers, json={
+            "booking_id": str(payment.booking_id),
+            "amount": 150.0,
+            "idempotency_key": "idem-pub-ok",
+        })
+    assert resp.status_code == 201
+
+
+def test_process_payment_failure_publisher_exception_silenced(payment_app, auth_headers, sample_payment):
+    """Event publisher failure during payment failure path should not abort the response."""
+    c, db, mod = payment_app
+    headers = auth_headers()
+
+    mock_pub = MagicMock()
+    mock_pub.publish.side_effect = Exception("eventbridge down")
+    mod.event_publisher = mock_pub
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+
+    payment = sample_payment(status="failed")
+
+    def fake_refresh(obj):
+        obj.id = payment.id
+        obj.booking_id = payment.booking_id
+        obj.user_id = payment.user_id
+        obj.amount = 50.0
+        obj.currency = "EUR"
+        obj.status = MagicMock(value="failed")
+        obj.payment_method = MagicMock(value="credit-card")
+        obj.idempotency_key = "idem-fail-pub"
+        obj.transaction_ref = None
+        obj.failure_reason = "Payment declined by issuing bank"
+        obj.card_token = None
+        obj.card_last_four = None
+        obj.created_at = payment.created_at
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+
+    with patch.object(mod, "simulate_payment_processing",
+                      return_value=(False, "Payment declined by issuing bank")), \
+         patch.object(mod, "record_audit", new_callable=AsyncMock):
+        resp = c.post("/api/v1/payments", headers=headers, json={
+            "booking_id": str(payment.booking_id),
+            "amount": 50.0,
+            "idempotency_key": "idem-fail-pub",
+        })
+    assert resp.status_code == 201
+    assert resp.json()["status"] == "failed"
+
+
+def test_refund_httpx_exception_silenced(payment_app, auth_headers, sample_payment):
+    """Booking status update httpx failure during refund should not abort the refund."""
+    c, db, mod = payment_app
+    headers = auth_headers()
+
+    p = sample_payment()
+    p.status = mod.PaymentStatus.COMPLETED
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = p
+    db.execute.return_value = result_mock
+    db.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, 'status', MagicMock(value="refunded")))
+    mod.event_publisher = None
+
+    with patch("httpx.AsyncClient") as mock_httpx, \
+         patch.object(mod, "record_audit", new_callable=AsyncMock):
+        mock_client = AsyncMock()
+        mock_client.put = AsyncMock(side_effect=Exception("booking service down"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.post(f"/api/v1/payments/{p.id}/refund", headers=headers, json={
+            "reason": "Test",
+        })
+    assert resp.status_code == 200
+
+
+def test_refund_publisher_exception_silenced(payment_app, auth_headers, sample_payment):
+    """Event publisher failure during refund should not abort the response."""
+    c, db, mod = payment_app
+    headers = auth_headers()
+
+    mock_pub = MagicMock()
+    mock_pub.publish.side_effect = Exception("eventbridge down")
+    mod.event_publisher = mock_pub
+
+    p = sample_payment()
+    p.status = mod.PaymentStatus.COMPLETED
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = p
+    db.execute.return_value = result_mock
+    db.refresh = AsyncMock(side_effect=lambda obj: setattr(obj, 'status', MagicMock(value="refunded")))
+
+    with patch("httpx.AsyncClient") as mock_httpx, \
+         patch.object(mod, "record_audit", new_callable=AsyncMock):
+        mock_client = AsyncMock()
+        mock_client.put = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.post(f"/api/v1/payments/{p.id}/refund", headers=headers, json={
+            "reason": "Test",
+        })
+    assert resp.status_code == 200
+
+
+# ── Validation (422) ─────────────────────────────────────────────
+
+def test_payment_missing_required_field_422(payment_app, auth_headers):
+    c, db, mod = payment_app
+    headers = auth_headers()
+    resp = c.post("/api/v1/payments", headers=headers, json={
+        "booking_id": str(uuid.uuid4()),
+        # amount and idempotency_key omitted
+    })
+    assert resp.status_code == 422

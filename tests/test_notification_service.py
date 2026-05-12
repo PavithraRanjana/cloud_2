@@ -170,3 +170,113 @@ def test_list_notifications_endpoint(notification_app, auth_headers):
 def test_sqs_polling_disabled_by_default(notification_app):
     c, db, mod = notification_app
     assert mod.ENABLE_SQS_POLLING is False
+
+
+# ── Health ───────────────────────────────────────────────────────
+
+def test_health_endpoint(notification_app):
+    c, db, mod = notification_app
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    assert resp.json()["service"] == "notification-service"
+
+
+# ── process_event – string detail ───────────────────────────────
+
+def test_process_event_detail_as_json_string(notification_app):
+    """detail can arrive as a JSON-encoded string (EventBridge re-serialises)."""
+    c, db, mod = notification_app
+    detail_dict = {
+        "booking_reference": "AL1XYZ99",
+        "passenger_name": "Alice",
+        "flight_id": "flight-x",
+        "total_price": "299.99",
+    }
+    mod.process_event({
+        "detail-type": "BookingCreated",
+        "detail": json.dumps(detail_dict),  # string, not dict
+    })
+
+
+def test_process_event_baggage_status_changed(notification_app):
+    c, db, mod = notification_app
+    mod.process_event({
+        "detail-type": "BaggageStatusChanged",
+        "detail": {"tag_number": "BAG-001", "status": "loaded", "location": "DUB"},
+    })
+
+
+def test_process_event_booking_cancelled(notification_app):
+    c, db, mod = notification_app
+    mod.process_event({
+        "detail-type": "BookingCancelled",
+        "detail": {"booking_reference": "ALCANCEL1"},
+    })
+
+
+# ── SQS polling enabled – starts background thread ───────────────
+
+def test_sqs_polling_enabled_starts_thread():
+    """When ENABLE_SQS_POLLING=true, lifespan should start a daemon thread."""
+    svc_path = os.path.join(os.path.dirname(__file__), "..", "services", "notification-service")
+    if svc_path not in sys.path:
+        sys.path.insert(0, svc_path)
+
+    from shared.database import Base
+    Base.metadata.clear()
+    for mod_name in ["models", "schemas"]:
+        sys.modules.pop(mod_name, None)
+
+    mock_engine = MagicMock()
+    mock_engine.begin.return_value = AsyncMock()
+    mock_engine.dispose = AsyncMock()
+
+    spec = importlib.util.spec_from_file_location(
+        "notification_main_sqs",
+        os.path.join(svc_path, "main.py"),
+    )
+    mod = importlib.util.module_from_spec(spec)
+
+    started_threads = []
+
+    class FakeThread:
+        def __init__(self, target=None, daemon=None):
+            self.target = target
+            self.daemon = daemon
+
+        def start(self):
+            started_threads.append(self)
+
+    with patch("shared.database.create_db_engine", return_value=mock_engine), \
+         patch("shared.database.create_session_factory"), \
+         patch("shared.logging.setup_logging"), \
+         patch.dict(os.environ, {"ENABLE_SQS_POLLING": "true"}), \
+         patch("threading.Thread", FakeThread):
+        spec.loader.exec_module(mod)
+
+        assert mod.ENABLE_SQS_POLLING is True
+
+        with TestClient(mod.app, raise_server_exceptions=False):
+            pass  # lifespan runs on enter
+
+    assert len(started_threads) == 1
+
+    for mod_name in ["models", "schemas", "notification_main_sqs"]:
+        sys.modules.pop(mod_name, None)
+    if svc_path in sys.path:
+        sys.path.remove(svc_path)
+
+
+# ── poll_events – consumer creation failure ───────────────────────
+
+def test_poll_events_consumer_creation_fails(notification_app):
+    """If EventConsumer raises, poll_events should return early without crashing."""
+    c, db, mod = notification_app
+
+    import threading
+    with patch.object(mod, "EventConsumer", side_effect=Exception("no SQS connection")):
+        t = threading.Thread(target=mod.poll_events)
+        t.start()
+        t.join(timeout=2.0)
+
+    assert not t.is_alive()

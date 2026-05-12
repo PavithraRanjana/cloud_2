@@ -1,3 +1,0 @@
-2026-05-02 16:25:18 [info     ] redis_connected                url=redis://localhost:6379/0
-2026-05-02 16:25:18 [info     ] gateway_request                method=GET path=/api/v1/checkin/ada7e52c-6237-43f5-8601-2cc1ace4566c target=http://localhost:8006/api/v1/checkin/ada7e52c-6237-43f5-8601-2cc1ace4566c trace_id=6e390667-95c0-4373-9f3d-c00285d680fd
-2026-05-02 16:25:18 [info     ] gateway_response               method=GET path=/api/v1/checkin/ada7e52c-6237-43f5-8601-2cc1ace4566c status=200 trace_id=6e390667-95c0-4373-9f3d-c00285d680fd

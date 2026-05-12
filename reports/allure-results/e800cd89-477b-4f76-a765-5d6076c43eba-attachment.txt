@@ -1,2 +1,0 @@
-2026-05-02 16:25:09 [info     ] redis_connected                url=redis://localhost:6379/0
-2026-05-02 16:25:09 [info     ] notification_sent              event_type=PaymentProcessed recipient=unknown subject='Payment Confirmed - Booking B1'

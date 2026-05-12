@@ -1,3 +1,0 @@
-INFO     boarding_pass_generator:handler.py:93 Boarding pass generator invoked
-INFO     boarding_pass_generator:handler.py:105 Generating boarding pass for Passenger on flight unknown, seat N/A
-INFO     boarding_pass_generator:handler.py:134 Uploaded boarding pass to s3://aerolink-documents/boarding-passes/unknown.pdf

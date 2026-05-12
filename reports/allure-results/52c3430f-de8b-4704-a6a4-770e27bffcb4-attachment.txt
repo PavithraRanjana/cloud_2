@@ -1,1 +1,0 @@
-2026-05-02 16:25:39 [error    ] event_publish_failed           detail_type=Type error='AWS error' source=src

@@ -319,3 +319,95 @@ def test_validate_api_key_invalid(client):
 
     resp = c.post("/api/v1/auth/validate-api-key?api_key=ak_bogus")
     assert resp.status_code == 401
+
+
+# ── Health ───────────────────────────────────────────────────────
+
+def test_health_endpoint(client):
+    c, db_session, mod = client
+    resp = c.get("/health")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["service"] == "auth-service"
+    assert "uptime_seconds" in body
+
+
+# ── GET /auth/me ─────────────────────────────────────────────────
+
+def test_get_me_success(client, auth_headers, sample_user):
+    c, db_session, mod = client
+    headers = auth_headers()
+    user = sample_user()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = user
+    db_session.execute.return_value = result_mock
+
+    resp = c.get("/api/v1/auth/me", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "email" in body
+    assert "username" in body
+
+
+def test_get_me_user_not_found(client, auth_headers):
+    c, db_session, mod = client
+    headers = auth_headers()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db_session.execute.return_value = result_mock
+
+    resp = c.get("/api/v1/auth/me", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_get_me_unauthenticated(client):
+    c, db_session, mod = client
+    resp = c.get("/api/v1/auth/me")
+    assert resp.status_code == 401
+
+
+# ── GET /auth/validate ───────────────────────────────────────────
+
+def test_validate_token_returns_claims(client, auth_headers):
+    c, db_session, mod = client
+    headers = auth_headers(role="airline-staff", airline_code="EI")
+
+    resp = c.get("/api/v1/auth/validate", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is True
+    assert body["role"] == "airline-staff"
+    assert body["airline_code"] == "EI"
+
+
+def test_validate_token_unauthenticated(client):
+    c, db_session, mod = client
+    resp = c.get("/api/v1/auth/validate")
+    assert resp.status_code == 401
+
+
+# ── Validation (422) ─────────────────────────────────────────────
+
+def test_register_missing_email_returns_422(client):
+    c, db_session, mod = client
+    resp = c.post("/api/v1/auth/register", json={
+        "username": "nomail",
+        "password": "StrongPass1",
+        "full_name": "No Mail",
+        # email omitted
+    })
+    assert resp.status_code == 422
+
+
+def test_login_missing_password_returns_422(client):
+    c, db_session, mod = client
+    resp = c.post("/api/v1/auth/login", json={"username": "user"})
+    assert resp.status_code == 422
+
+
+def test_validate_api_key_missing_param_returns_422(client):
+    c, db_session, mod = client
+    resp = c.post("/api/v1/auth/validate-api-key")  # api_key query param required
+    assert resp.status_code == 422

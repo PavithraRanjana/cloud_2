@@ -1,3 +1,0 @@
-INFO     notification_dispatch:handler.py:99 Received 1 SQS record(s)
-INFO     notification_dispatch:handler.py:114 No template for event type: UnknownEvent
-INFO     notification_dispatch:handler.py:139 Dispatch complete: {"processed": 0, "errors": 0, "total": 1}

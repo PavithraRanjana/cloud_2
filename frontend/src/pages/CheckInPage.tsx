@@ -218,6 +218,7 @@ function BookingRow({
           booking_id: booking.id,
           flight_id:  booking.flight_id,
           passenger_name: booking.passenger_name,
+          seat_preference: booking.seat_numbers ?? undefined,
         },
       });
       if (error || !data) throw new Error((error as any)?.detail ?? "Check-in failed");
@@ -352,9 +353,7 @@ export function CheckInPage() {
   // Separate into groups
   const upcoming   = bookings.filter((b) => STATUS_ELIGIBLE.has(b.status.toLowerCase()));
   const checkedIn  = bookings.filter((b) => STATUS_DONE.has(b.status.toLowerCase()));
-  const other      = bookings.filter((b) =>
-    !STATUS_ELIGIBLE.has(b.status.toLowerCase()) && !STATUS_DONE.has(b.status.toLowerCase())
-  );
+  const cancelled  = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
 
   return (
     <div className="space-y-8">
@@ -409,13 +408,13 @@ export function CheckInPage() {
         </section>
       )}
 
-      {/* Other bookings (pending payment, cancelled, etc.) */}
-      {other.length > 0 && (
+      {/* Cancelled bookings */}
+      {cancelled.length > 0 && (
         <section className="space-y-3">
           <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">
-            Other Bookings
+            Cancelled Bookings
           </h3>
-          {other.map((b) => (
+          {cancelled.map((b) => (
             <BookingRow key={b.id} booking={b}
               onCheckedIn={(ci) => { setSelectedCheckin(ci); setSelectedBooking(b); }} />
           ))}

@@ -36,7 +36,15 @@ except Exception:
     pass
 
 
-def assign_seat() -> tuple[str, str]:
+def resolve_seat(seat_preference: str | None) -> tuple[str, str]:
+    """Use the booked seat if provided; otherwise fall back to random assignment."""
+    if seat_preference:
+        seat = seat_preference.strip().split(",")[0].strip()
+        if seat:
+            row_str = "".join(c for c in seat if c.isdigit())
+            row = int(row_str) if row_str else 15
+            group = "A" if row <= 10 else "B" if row <= 20 else "C"
+            return seat, group
     row = random.randint(1, 35)
     col = random.choice(["A", "B", "C", "D", "E", "F"])
     group = "A" if row <= 10 else "B" if row <= 20 else "C"
@@ -91,7 +99,7 @@ async def check_in(data: CheckInRequest,
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Already checked in for this booking")
 
-    seat, group = assign_seat()
+    seat, group = resolve_seat(data.seat_preference)
     checkin = CheckIn(
         booking_id=data.booking_id,
         flight_id=data.flight_id,

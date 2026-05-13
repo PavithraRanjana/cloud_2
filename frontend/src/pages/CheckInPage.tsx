@@ -1,12 +1,18 @@
 import { useState, type FormEvent } from "react";
-import { checkinClient } from "../api/client";
+import { checkinClient, bookingClient } from "../api/client";
 
 interface CheckIn {
   id: string;
   booking_id: string;
+  flight_id: string;
+  passenger_name: string;
   seat_number: string | null;
-  checked_in_at: string;
+  boarding_group: string | null;
+  gate: string | null;
   status: string;
+  boarding_pass_url: string | null;
+  has_baggage: boolean;
+  created_at: string;
 }
 
 interface BoardingPass {
@@ -34,8 +40,20 @@ export function CheckInPage() {
     setError("");
     setLoading(true);
     try {
+      // Fetch booking first to get flight_id and passenger_name (required by check-in service)
+      const { data: booking, error: bookingErr } = await bookingClient.GET(
+        "/api/v1/bookings/{booking_id}",
+        { params: { path: { booking_id: bookingId } } }
+      );
+      if (bookingErr || !booking) throw new Error("Booking not found");
+
+      const b = booking as { flight_id: string; passenger_name: string };
       const { data, error: err } = await checkinClient.POST("/api/v1/checkin", {
-        body: { booking_id: bookingId },
+        body: {
+          booking_id: bookingId,
+          flight_id: b.flight_id,
+          passenger_name: b.passenger_name,
+        },
       });
       if (err || !data) throw new Error("Check-in failed");
       setCheckin(data as CheckIn);

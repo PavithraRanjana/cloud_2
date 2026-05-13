@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./contexts/AuthContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { Layout } from "./components/Layout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -26,12 +27,12 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
-                <Route index         element={<DashboardPage />} />
-                <Route path="flights"  element={<FlightsPage />} />
-                <Route path="bookings" element={<BookingsPage />} />
-                <Route path="checkin"  element={<CheckInPage />} />
-                <Route path="baggage"  element={<BaggagePage />} />
-                <Route path="profile"  element={<ProfilePage />} />
+                <Route index         element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
+                <Route path="flights"  element={<ErrorBoundary><FlightsPage /></ErrorBoundary>} />
+                <Route path="bookings" element={<ErrorBoundary><BookingsPage /></ErrorBoundary>} />
+                <Route path="checkin"  element={<ErrorBoundary><CheckInPage /></ErrorBoundary>} />
+                <Route path="baggage"  element={<ErrorBoundary><BaggagePage /></ErrorBoundary>} />
+                <Route path="profile"  element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

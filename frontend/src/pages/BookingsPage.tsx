@@ -24,10 +24,11 @@ const STATUS_COLOR: Record<string, string> = {
 export function BookingsPage() {
   const qc = useQueryClient();
 
-  const { data: bookings = [], isLoading } = useQuery<Booking[]>({
+  const { data: bookings = [], isLoading, isError } = useQuery<Booking[]>({
     queryKey: ["bookings"],
     queryFn: async () => {
-      const { data } = await bookingClient.GET("/api/v1/bookings", {});
+      const { data, error } = await bookingClient.GET("/api/v1/bookings", {});
+      if (error) throw new Error("Failed to load bookings");
       return (data as Booking[]) ?? [];
     },
   });
@@ -43,9 +44,8 @@ export function BookingsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookings"] }),
   });
 
-  if (isLoading) {
-    return <p className="text-sm text-gray-500">Loading bookings…</p>;
-  }
+  if (isLoading) return <p className="text-sm text-gray-500">Loading bookings…</p>;
+  if (isError)   return <p className="text-sm text-red-600">Failed to load bookings. Please refresh.</p>;
 
   return (
     <div className="space-y-6">

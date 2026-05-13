@@ -34,9 +34,19 @@ class Payment(Base):
     idempotency_key = Column(String(255), unique=True, nullable=False, index=True)
     transaction_ref = Column(String(255), nullable=True)
     failure_reason = Column(String(500), nullable=True)
-    # PCI-DSS: tokenized card reference (never store raw card numbers)
+    # PCI-DSS: tokenized card reference (never store raw card numbers, never store CVV)
     card_token = Column(String(100), nullable=True)
     card_last_four = Column(String(4), nullable=True)
+    card_holder_name = Column(String(255), nullable=True)
+    card_expiry = Column(String(7), nullable=True)          # MM/YY – month+year only
+    # Wallet
+    wallet_type = Column(String(20), nullable=True)
+    wallet_account = Column(String(255), nullable=True)     # masked email or phone
+    # Bank transfer
+    bank_account_holder = Column(String(255), nullable=True)
+    bank_account_masked = Column(String(20), nullable=True) # last-4 only
+    bank_routing_number = Column(String(20), nullable=True)
+    bank_name = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

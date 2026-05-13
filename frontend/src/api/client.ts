@@ -13,7 +13,7 @@ import type { paths as CheckinPaths } from "../types/checkin";
 import type { paths as PassengerPaths } from "../types/passenger";
 import type { paths as NotificationPaths } from "../types/notification";
 
-const BASE = "/api";
+const BASE = "";
 
 const authMiddleware: Middleware = {
   async onRequest({ request }) {

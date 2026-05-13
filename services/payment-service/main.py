@@ -70,6 +70,10 @@ def _to_response(p: Payment) -> PaymentResponse:
         payment_method=p.payment_method.value, idempotency_key=p.idempotency_key,
         transaction_ref=p.transaction_ref, failure_reason=p.failure_reason,
         card_token=p.card_token, card_last_four=p.card_last_four,
+        card_holder_name=p.card_holder_name, card_expiry=p.card_expiry,
+        wallet_type=p.wallet_type, wallet_account=p.wallet_account,
+        bank_account_holder=p.bank_account_holder, bank_account_masked=p.bank_account_masked,
+        bank_routing_number=p.bank_routing_number, bank_name=p.bank_name,
         created_at=p.created_at,
     )
 
@@ -102,9 +106,24 @@ async def process_payment(data: PaymentCreate, request: Request,
                            detail=f"Idempotency key reused: {data.idempotency_key}")
         return _to_response(existing_payment)
 
-    # PCI-DSS: Tokenize card data - NEVER store raw card numbers
-    card_tok = tokenize_card(data.card_number) if data.card_number else None
-    last_four = data.card_number[-4:] if data.card_number and len(data.card_number) >= 4 else None
+    # PCI-DSS: Tokenize card number; CVV validated in schema but NEVER stored
+    card_raw = (data.card_number or "").replace(" ", "")
+    card_tok = tokenize_card(card_raw) if card_raw else None
+    last_four = card_raw[-4:] if len(card_raw) >= 4 else None
+
+    # Wallet: mask account identifier for storage
+    wallet_account_stored: str | None = None
+    if data.wallet_email:
+        local, domain = data.wallet_email.split("@", 1)
+        wallet_account_stored = local[:2] + "***@" + domain
+    elif data.wallet_phone:
+        wallet_account_stored = "***" + data.wallet_phone[-4:]
+
+    # Bank: store last-4 of account number only
+    bank_masked: str | None = None
+    if data.bank_account_number:
+        acct = data.bank_account_number.replace(" ", "")
+        bank_masked = "****" + acct[-4:]
 
     payment = Payment(
         booking_id=data.booking_id,
@@ -116,6 +135,14 @@ async def process_payment(data: PaymentCreate, request: Request,
         idempotency_key=data.idempotency_key,
         card_token=card_tok,
         card_last_four=last_four,
+        card_holder_name=data.card_holder_name,
+        card_expiry=data.card_expiry,
+        wallet_type=data.wallet_type,
+        wallet_account=wallet_account_stored,
+        bank_account_holder=data.bank_account_holder,
+        bank_account_masked=bank_masked,
+        bank_routing_number=data.bank_routing_number,
+        bank_name=data.bank_name,
     )
     db.add(payment)
     await db.flush()

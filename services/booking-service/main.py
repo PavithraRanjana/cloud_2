@@ -7,9 +7,9 @@ import string
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 import httpx
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
@@ -19,7 +19,7 @@ from shared.resilience import create_circuit_breaker
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Booking, BookingStatus
-from schemas import BookingCreate, BookingResponse, BookingStatusUpdate
+from schemas import BookingCreate, BookingResponse, BookingStatusUpdate, SeatAvailabilityResponse
 
 config = BaseConfig(service_name="booking-service")
 setup_logging(config.service_name)
@@ -63,9 +63,30 @@ def _to_response(b: Booking) -> BookingResponse:
         num_passengers=b.num_passengers, total_price=b.total_price,
         status=b.status.value, payment_id=str(b.payment_id) if b.payment_id else None,
         seat_numbers=b.seat_numbers, special_requests=b.special_requests,
-        trip_type=b.trip_type, group_booking_id=str(b.group_booking_id) if b.group_booking_id else None,
+        trip_type=b.trip_type,
+        group_booking_id=str(b.group_booking_id) if b.group_booking_id else None,
         created_at=b.created_at,
+        title=b.title, gender=b.gender,
+        first_name=b.first_name, middle_name=b.middle_name, last_name=b.last_name,
+        date_of_birth=b.date_of_birth, nationality=b.nationality,
+        passport_number=b.passport_number, passport_expiry=b.passport_expiry,
+        country_code=b.country_code, phone_number=b.phone_number,
     )
+
+
+_MIGRATION_QUERIES = [
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS title VARCHAR(20)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS gender VARCHAR(10)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS first_name VARCHAR(100)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS middle_name VARCHAR(100)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS last_name VARCHAR(100)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS date_of_birth DATE",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS nationality VARCHAR(100)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS passport_number VARCHAR(50)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS passport_expiry DATE",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS country_code VARCHAR(10)",
+    "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30)",
+]
 
 
 @asynccontextmanager
@@ -74,7 +95,12 @@ async def lifespan(app: FastAPI):
         try:
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
-            pass  # Table may already exist from another service starting concurrently
+            pass
+        for q in _MIGRATION_QUERIES:
+            try:
+                await conn.execute(text(q))
+            except Exception:
+                pass
     yield
     await engine.dispose()
 
@@ -133,6 +159,20 @@ async def create_booking(data: BookingCreate,
         special_requests=data.special_requests,
         trip_type=data.trip_type,
         group_booking_id=group_id,
+        seat_numbers=data.seat_number,
+        # Passenger identity
+        title=data.title,
+        gender=data.gender,
+        first_name=data.first_name,
+        middle_name=data.middle_name,
+        last_name=data.last_name,
+        date_of_birth=data.date_of_birth,
+        nationality=data.nationality,
+        passport_number=data.passport_number,
+        passport_expiry=data.passport_expiry,
+        # Contact
+        country_code=data.country_code,
+        phone_number=data.phone_number,
     )
     db.add(booking)
     await db.flush()
@@ -163,6 +203,28 @@ async def list_bookings(current_user: dict = Depends(get_current_user),
     query = select(Booking).where(Booking.user_id == current_user["sub"]).order_by(Booking.created_at.desc())
     result = await db.execute(query)
     return [_to_response(b) for b in result.scalars().all()]
+
+
+# NOTE: this must be defined BEFORE /{booking_id} to avoid path shadowing
+@app.get("/api/v1/bookings/seat-availability", response_model=SeatAvailabilityResponse)
+async def get_seat_availability(
+    flight_id: str = Query(...),
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all taken seat numbers for a flight (used to render the seat map)."""
+    result = await db.execute(
+        select(Booking.seat_numbers).where(
+            Booking.flight_id == flight_id,
+            Booking.status.not_in([BookingStatus.CANCELLED, BookingStatus.REFUNDED]),
+            Booking.seat_numbers.isnot(None),
+        )
+    )
+    booked: list[str] = []
+    for row in result.scalars().all():
+        if row:
+            booked.extend(s.strip() for s in row.split(",") if s.strip())
+    return SeatAvailabilityResponse(booked_seats=booked)
 
 
 @app.get("/api/v1/bookings/{booking_id}", response_model=BookingResponse)

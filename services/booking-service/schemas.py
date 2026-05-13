@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 
 class BookingCreate(BaseModel):
@@ -10,8 +10,22 @@ class BookingCreate(BaseModel):
     cabin_class: str = "economy"
     num_passengers: int = Field(1, ge=1, le=9)
     special_requests: Optional[str] = None
-    trip_type: str = "one_way"              # one_way | return
-    group_booking_id: Optional[str] = None  # UUID linking both legs of a return trip
+    trip_type: str = "one_way"
+    group_booking_id: Optional[str] = None
+    seat_number: Optional[str] = None
+    # Passenger identity
+    title: Optional[str] = None
+    gender: Optional[str] = None
+    first_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    nationality: Optional[str] = None
+    passport_number: Optional[str] = None
+    passport_expiry: Optional[date] = None
+    # Contact
+    country_code: Optional[str] = None
+    phone_number: Optional[str] = None
 
 
 class BookingResponse(BaseModel):
@@ -31,6 +45,19 @@ class BookingResponse(BaseModel):
     trip_type: str
     group_booking_id: Optional[str]
     created_at: datetime
+    # Passenger identity
+    title: Optional[str] = None
+    gender: Optional[str] = None
+    first_name: Optional[str] = None
+    middle_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    nationality: Optional[str] = None
+    passport_number: Optional[str] = None
+    passport_expiry: Optional[date] = None
+    # Contact
+    country_code: Optional[str] = None
+    phone_number: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -39,3 +66,7 @@ class BookingResponse(BaseModel):
 class BookingStatusUpdate(BaseModel):
     status: str
     payment_id: Optional[str] = None
+
+
+class SeatAvailabilityResponse(BaseModel):
+    booked_seats: list[str]

@@ -117,11 +117,11 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
       {/* Card header */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <span className="text-base">✈</span>
-          <span className="font-bold text-gray-900 tracking-wide">{flight.flight_number}</span>
-          <span className="text-sm text-gray-400">{flight.airline}</span>
+          <span className="text-base text-blue-500">✈</span>
+          <span className="font-bold text-blue-700 tracking-wide">{flight.flight_number}</span>
+          <span className="text-sm font-medium text-indigo-400">{flight.airline}</span>
           {flight.aircraft_type && (
-            <span className="hidden sm:inline rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-400">
+            <span className="hidden sm:inline rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-xs font-medium text-sky-600">
               {flight.aircraft_type}
             </span>
           )}
@@ -137,7 +137,7 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
 
           {/* Origin */}
           <div className="flex-1 text-center">
-            <p className="text-3xl font-bold text-blue-700 tabular-nums">{formatTime(flight.departure_time)}</p>
+            <p className="text-3xl font-bold text-gray-900 tabular-nums">{formatTime(flight.departure_time)}</p>
             <p className="mt-0.5 font-semibold text-gray-800">{cityLabel(flight.origin)}</p>
             <p className="text-xs font-mono text-blue-500">{flight.origin}</p>
             <p className="mt-1 text-xs text-gray-400">{formatDate(flight.departure_date)}</p>
@@ -160,7 +160,7 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
           <div className="flex-1 text-center">
             <p className="text-3xl font-bold text-gray-900 tabular-nums">{formatTime(flight.arrival_time)}</p>
             <p className="mt-0.5 font-semibold text-gray-800">{cityLabel(flight.destination)}</p>
-            <p className="text-xs font-mono text-blue-500">{flight.destination}</p>
+            <p className="text-xs font-mono text-violet-400">{flight.destination}</p>
             <p className="mt-1 text-xs text-gray-400">{formatDate(flight.arrival_date)}</p>
           </div>
         </div>
@@ -168,27 +168,40 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
 
       {/* Cabin breakdown — only shown when "Any cabin" is selected */}
       {isAny && cabinRows.length > 0 && (
-        <div className="flex items-center gap-6 border-t border-gray-100 px-5 py-2.5 bg-gray-50/40">
-          {cabinRows.map((c) => (
-            <div key={c.label} className="flex items-center gap-1.5 text-xs">
-              <span className="text-gray-400">{c.label}</span>
-              <span className="font-semibold text-gray-700">${c.price.toFixed(0)}</span>
-              <span className={`text-gray-400 ${c.seats < 15 && c.seats > 0 ? "text-amber-500 font-medium" : ""}`}>
-                · {c.seats} left
-              </span>
-            </div>
-          ))}
+        <div className="flex items-center gap-3 border-t border-gray-100 px-5 py-2.5 bg-gray-50/40">
+          {cabinRows.map((c) => {
+            const cabinStyle =
+              c.label === "Economy"  ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+              c.label === "Business" ? "bg-amber-50  text-amber-700  border-amber-200"    :
+                                       "bg-purple-50 text-purple-700 border-purple-200";
+            const seatStyle = c.seats < 15 && c.seats > 0 ? "text-red-500 font-semibold" : "text-gray-400";
+            return (
+              <div key={c.label} className={`flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-medium ${cabinStyle}`}>
+                <span>{c.label}</span>
+                <span className="font-bold">${c.price.toFixed(0)}</span>
+                <span className={seatStyle}>· {c.seats} left</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
       {/* Card footer */}
       <div className="flex items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/60 px-5 py-3">
-        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
-          {flight.gate     && <span className="rounded bg-gray-100 px-2 py-0.5">Gate {flight.gate}</span>}
-          {flight.terminal && <span className="rounded bg-gray-100 px-2 py-0.5">Terminal {flight.terminal}</span>}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {flight.gate && (
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600">
+              Gate {flight.gate}
+            </span>
+          )}
+          {flight.terminal && (
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600">
+              Terminal {flight.terminal}
+            </span>
+          )}
           {!unavailable && (
-            <span className={seats > 0 && seats < 15 ? "font-medium text-amber-600" : ""}>
-              {isAny ? `${seats} seats across all cabins` : `${seats} seat${seats !== 1 ? "s" : ""} left`}
+            <span className="rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 font-medium text-slate-600">
+              {isAny ? `${seats} seats` : `${seats} seat${seats !== 1 ? "s" : ""} left`}
             </span>
           )}
         </div>
@@ -197,7 +210,7 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
           {!unavailable && price > 0 && (
             <div className="text-right">
               <p className="text-xl font-bold text-blue-700">${price.toFixed(2)}</p>
-              <p className="text-xs capitalize text-gray-400">{priceLabel}</p>
+              <p className="text-[11px] capitalize font-medium text-blue-400">{priceLabel}</p>
             </div>
           )}
           <button

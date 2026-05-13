@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Float, Integer, Enum as SAEnum, Text
+from sqlalchemy import Column, String, DateTime, Date, Float, Integer, Enum as SAEnum, Text
 from sqlalchemy.dialects.postgresql import UUID
 from shared.database import Base
 import enum
@@ -35,6 +35,19 @@ class Booking(Base):
     special_requests = Column(Text, nullable=True)
     trip_type = Column(String(10), nullable=False, default="one_way")   # one_way | return
     group_booking_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    # Passenger identity
+    title = Column(String(20), nullable=True)
+    gender = Column(String(10), nullable=True)
+    first_name = Column(String(100), nullable=True)
+    middle_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
+    date_of_birth = Column(Date, nullable=True)
+    nationality = Column(String(100), nullable=True)
+    passport_number = Column(String(50), nullable=True)
+    passport_expiry = Column(Date, nullable=True)
+    # Contact details
+    country_code = Column(String(10), nullable=True)
+    phone_number = Column(String(30), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

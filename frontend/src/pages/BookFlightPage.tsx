@@ -56,7 +56,13 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 function cityLabel(code: string) { return AIRPORTS[code]?.city ?? code; }
-function fmt(t: string) { return t.slice(0, 5); }
+function fmt(t: string) {
+  const [hStr, mStr] = t.slice(0, 5).split(":");
+  const h = parseInt(hStr, 10);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${mStr} ${period}`;
+}
 function fmtDate(d: string) {
   return new Date(d + "T00:00:00").toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",

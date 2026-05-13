@@ -46,7 +46,13 @@ function flightDuration(depDate: string, depTime: string, arrDate: string, arrTi
   return `${h}h${m > 0 ? ` ${m}m` : ""}`;
 }
 
-function formatTime(t: string) { return t.slice(0, 5); }
+function formatTime(t: string) {
+  const [hStr, mStr] = t.slice(0, 5).split(":");
+  const h = parseInt(hStr, 10);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 || 12;
+  return `${h12}:${mStr} ${period}`;
+}
 function formatDate(d: string) {
   return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }

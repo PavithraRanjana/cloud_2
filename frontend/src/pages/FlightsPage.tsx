@@ -1,9 +1,8 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { flightClient, bookingClient, paymentClient } from "../api/client";
-import { useAuth } from "../contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { flightClient } from "../api/client";
 import { AirportCombobox, AIRPORTS } from "../components/AirportCombobox";
-import { PaymentForm, PaymentFormData } from "../components/PaymentForm";
 
 interface Flight {
   id: string;
@@ -209,8 +208,7 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
 }
 
 export function FlightsPage() {
-  const { user } = useAuth();
-  const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const [filters, setFilters] = useState({
     origin: "",
@@ -218,18 +216,6 @@ export function FlightsPage() {
     departure_date: "",
     cabin_class: "",
   });
-  const [bookingFlight,  setBookingFlight]  = useState<Flight | null>(null);
-  const [modalCabin,     setModalCabin]     = useState("economy");
-  const [modalStep,      setModalStep]      = useState<1 | 2>(1);
-  const [idempotencyKey, setIdempotencyKey] = useState("");
-
-  interface PaymentResult {
-    success: boolean;
-    bookingRef: string;
-    transactionRef?: string;
-    failureReason?: string;
-  }
-  const [paymentResult, setPaymentResult] = useState<PaymentResult | null>(null);
 
   // Load all flights on mount; refetch when filters change
   const { data: flights = [], isFetching, isError } = useQuery<Flight[]>({
@@ -251,71 +237,8 @@ export function FlightsPage() {
     },
   });
 
-  // Effective cabin for booking: use filter value unless "any", then use modal selection
-  const effectiveCabin = filters.cabin_class || modalCabin;
-
-  const bookAndPay = useMutation({
-    mutationFn: async ({ flight, paymentData: pd }: { flight: Flight; paymentData: PaymentFormData }) => {
-      // Step 1: create the booking
-      const { data: bookingData, error: bookingErr } = await bookingClient.POST("/api/v1/bookings", {
-        body: {
-          flight_id:       flight.id,
-          passenger_name:  user!.full_name,
-          passenger_email: user!.email,
-          cabin_class:     effectiveCabin,
-        },
-      });
-      if (bookingErr || !bookingData) throw new Error("Failed to create booking");
-      const booking = bookingData as { id: string; booking_reference: string; total_price: number };
-
-      // Step 2: process payment
-      const { data: paymentResp, error: paymentErr } = await paymentClient.POST("/api/v1/payments", {
-        body: {
-          booking_id:      booking.id,
-          amount:          booking.total_price,
-          currency:        "USD",
-          idempotency_key: idempotencyKey,
-          ...pd,
-        },
-      });
-      if (paymentErr) throw new Error("Payment request failed");
-      const payment = paymentResp as { status: string; transaction_ref?: string; failure_reason?: string };
-      return { booking, payment };
-    },
-    onSuccess: ({ booking, payment }) => {
-      qc.invalidateQueries({ queryKey: ["bookings"] });
-      setPaymentResult({
-        success:        payment.status === "completed",
-        bookingRef:     booking.booking_reference,
-        transactionRef: payment.transaction_ref ?? undefined,
-        failureReason:  payment.failure_reason  ?? undefined,
-      });
-    },
-    onError: () => {
-      setPaymentResult({ success: false, bookingRef: "", failureReason: "An unexpected error occurred." });
-    },
-  });
-
-  const priceKey = `price_${effectiveCabin}` as keyof Flight;
-
-  function openBookingModal(flight: Flight) {
-    if (!filters.cabin_class) {
-      if (flight.available_seats_economy  > 0) setModalCabin("economy");
-      else if (flight.available_seats_business > 0) setModalCabin("business");
-      else setModalCabin("first");
-    }
-    setModalStep(1);
-    setPaymentMethod("credit-card");
-    setCardNumber("");
-    setIdempotencyKey(crypto.randomUUID());
-    setPaymentResult(null);
-    setBookingFlight(flight);
-  }
-
-  function closeModal() {
-    setBookingFlight(null);
-    setPaymentResult(null);
-    setModalStep(1);
+  function handleBook(flight: Flight) {
+    navigate("/book", { state: { flight, cabinClass: filters.cabin_class } });
   }
 
   return (
@@ -401,143 +324,12 @@ export function FlightsPage() {
             key={flight.id}
             flight={flight}
             cabinClass={filters.cabin_class}
-            onBook={() => openBookingModal(flight)}
-            isBooking={bookAndPay.isPending}
+            onBook={() => handleBook(flight)}
+            isBooking={false}
           />
         ))}
       </div>
-
-      {/* Booking + Payment modal */}
-      {bookingFlight && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white shadow-2xl overflow-hidden">
-
-            {/* Step indicator */}
-            {!paymentResult && (
-              <div className="flex border-b border-gray-100">
-                {(["Review", "Payment"] as const).map((label, i) => (
-                  <div key={label} className={`flex-1 py-3 text-center text-xs font-semibold ${modalStep === i + 1 ? "bg-blue-600 text-white" : "text-gray-400"}`}>
-                    {i + 1}. {label}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="p-6">
-
-              {/* ── Result state ── */}
-              {paymentResult ? (
-                paymentResult.success ? (
-                  <div className="text-center space-y-3">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl">✓</div>
-                    <h3 className="text-lg font-bold text-gray-900">Payment Successful</h3>
-                    <div className="rounded-xl bg-gray-50 p-4 text-left space-y-2 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">Booking Ref</span>
-                        <span className="font-mono font-bold text-blue-700">{paymentResult.bookingRef}</span>
-                      </div>
-                      {paymentResult.transactionRef && (
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Transaction</span>
-                          <span className="font-mono text-xs text-gray-600">{paymentResult.transactionRef}</span>
-                        </div>
-                      )}
-                    </div>
-                    <button onClick={closeModal} className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
-                      Done
-                    </button>
-                  </div>
-                ) : (
-                  <div className="text-center space-y-3">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-2xl">✗</div>
-                    <h3 className="text-lg font-bold text-gray-900">Payment Failed</h3>
-                    <p className="text-sm text-gray-500">{paymentResult.failureReason}</p>
-                    {paymentResult.bookingRef && (
-                      <p className="text-xs text-gray-400">
-                        Booking <span className="font-mono font-medium text-gray-600">{paymentResult.bookingRef}</span> is on hold — retry to complete it.
-                      </p>
-                    )}
-                    <div className="flex gap-3 pt-1">
-                      <button onClick={closeModal} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          setPaymentResult(null);
-                          setModalStep(2);
-                          setIdempotencyKey(crypto.randomUUID());
-                        }}
-                        className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
-                      >
-                        Retry Payment
-                      </button>
-                    </div>
-                  </div>
-                )
-              ) : modalStep === 1 ? (
-                /* ── Step 1: Review ── */
-                <>
-                  <h3 className="mb-4 text-base font-bold text-gray-900">Review your booking</h3>
-                  <div className="mb-4 rounded-xl bg-gray-50 p-4 space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Flight</span>
-                      <span className="font-semibold">{bookingFlight.flight_number}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Route</span>
-                      <span className="font-semibold">{cityLabel(bookingFlight.origin)} → {cityLabel(bookingFlight.destination)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-500">Date</span>
-                      <span className="font-semibold">{formatDate(bookingFlight.departure_date)}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Cabin</span>
-                      {filters.cabin_class ? (
-                        <span className="font-semibold capitalize">{filters.cabin_class}</span>
-                      ) : (
-                        <select
-                          value={modalCabin}
-                          onChange={(e) => setModalCabin(e.target.value)}
-                          className="rounded-lg border border-gray-300 px-2 py-1 text-sm font-semibold focus:border-blue-500 focus:outline-none"
-                        >
-                          {bookingFlight.available_seats_economy  > 0 && <option value="economy">Economy — ${bookingFlight.price_economy.toFixed(2)}</option>}
-                          {bookingFlight.available_seats_business > 0 && <option value="business">Business — ${bookingFlight.price_business.toFixed(2)}</option>}
-                          {bookingFlight.available_seats_first    > 0 && bookingFlight.price_first > 0 && <option value="first">First — ${bookingFlight.price_first.toFixed(2)}</option>}
-                        </select>
-                      )}
-                    </div>
-                    <div className="flex justify-between border-t pt-2 mt-1">
-                      <span className="text-gray-500">Total</span>
-                      <span className="text-xl font-bold text-blue-700">${(bookingFlight[priceKey] as number)?.toFixed(2)}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-3">
-                    <button onClick={closeModal} className="flex-1 rounded-lg border border-gray-300 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">
-                      Cancel
-                    </button>
-                    <button onClick={() => setModalStep(2)} className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
-                      Continue to Payment
-                    </button>
-                  </div>
-                </>
-              ) : (
-                /* ── Step 2: Payment ── */
-                <>
-                  <h3 className="mb-4 text-base font-bold text-gray-900">Payment details</h3>
-                  <PaymentForm
-                    amount={(bookingFlight[priceKey] as number) ?? 0}
-                    currency="USD"
-                    isPending={bookAndPay.isPending}
-                    onBack={() => setModalStep(1)}
-                    onSubmit={(pd) => bookAndPay.mutate({ flight: bookingFlight, paymentData: pd })}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+

@@ -15,5 +15,4 @@ postgres_data/
 reports/
 .scannerwork/
 .coverage*
-OpenAPI/
 *.bak

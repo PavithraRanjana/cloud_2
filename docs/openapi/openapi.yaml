@@ -1,0 +1,866 @@
+openapi: 3.0.3
+info:
+  title: AeroLink Airline Platform API
+  description: |
+    Distributed airline microservices platform providing flight management,
+    booking, payments, check-in, baggage tracking, and passenger services.
+
+    ## Authentication
+    - **JWT Bearer**: Standard user authentication via `/auth/login`.
+    - **API Key**: Partner API access via `X-API-Key` header (issued on registration with `partner-api` role).
+
+    ## Rate Limiting
+    - Public / JWT users: **100 requests/minute** per IP.
+    - Partner API key holders: **1000 requests/minute** per key.
+
+    ## Patterns
+    - **CQRS**: Flight search reads from Redis cache, writes go to PostgreSQL.
+    - **Saga**: Booking creation reserves seats; cancellation triggers compensating transaction.
+    - **Optimistic Locking**: Seat updates use a version column to prevent double-booking.
+    - **Event-Driven**: EventBridge publishes domain events consumed via SQS.
+  version: 1.0.0
+  contact:
+    name: AeroLink Engineering
+
+servers:
+  - url: http://localhost:8000
+    description: API Gateway (development)
+
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+tags:
+  - name: Auth
+    description: Authentication and user management
+  - name: Flights
+    description: Flight search and management (CQRS read/write)
+  - name: Bookings
+    description: Booking lifecycle with saga pattern
+
+paths:
+  # ── Auth Service ──────────────────────────────────────────
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRegister'
+            example:
+              email: jane@example.com
+              username: janedoe
+              password: s3cureP@ss
+              full_name: Jane Doe
+              role: passenger
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '409':
+          description: Duplicate email or username
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate and obtain JWT tokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserLogin'
+            example:
+              username: janedoe
+              password: s3cureP@ss
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+              example:
+                access_token: eyJhbGciOi...
+                refresh_token: eyJhbGciOi...
+                token_type: bearer
+                expires_in: 1800
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh an access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: New tokens issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid or expired refresh token
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: Current user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401':
+          description: Not authenticated
+
+  /api/v1/auth/validate:
+    get:
+      tags: [Auth]
+      summary: Validate a JWT token and return claims
+      responses:
+        '200':
+          description: Token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  user_id:
+                    type: string
+                    format: uuid
+                  role:
+                    type: string
+                  airport_code:
+                    type: string
+                    nullable: true
+                  airline_code:
+                    type: string
+                    nullable: true
+
+  /api/v1/auth/validate-api-key:
+    post:
+      tags: [Auth]
+      summary: Validate a partner API key
+      parameters:
+        - in: query
+          name: api_key
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: API key is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  user_id:
+                    type: string
+                    format: uuid
+                  role:
+                    type: string
+                  rate_limit:
+                    type: integer
+        '401':
+          description: Invalid API key
+
+  # ── Flight Service ────────────────────────────────────────
+  /api/v1/flights:
+    get:
+      tags: [Flights]
+      summary: Search flights (CQRS — reads from cache when available)
+      security: []
+      parameters:
+        - in: query
+          name: origin
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 3
+          description: IATA origin airport code
+          example: JFK
+        - in: query
+          name: destination
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 3
+          description: IATA destination airport code
+          example: LAX
+        - in: query
+          name: departure_date
+          schema:
+            type: string
+            format: date
+          example: "2026-06-15"
+        - in: query
+          name: cabin_class
+          schema:
+            type: string
+            enum: [economy, business, first]
+        - in: query
+          name: min_price
+          schema:
+            type: number
+        - in: query
+          name: max_price
+          schema:
+            type: number
+        - in: query
+          name: cursor
+          schema:
+            type: string
+            format: uuid
+          description: Cursor for keyset pagination (last flight ID)
+        - in: query
+          name: page_size
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Flight search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FlightResponse'
+                  source:
+                    type: string
+                    enum: [cache, database]
+                  next_cursor:
+                    type: string
+                    nullable: true
+                    description: Pass as `cursor` to fetch the next page
+
+    post:
+      tags: [Flights]
+      summary: Create a new flight (admin / airline-staff only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightCreate'
+            example:
+              flight_number: AL100
+              airline: AeroLink
+              origin: JFK
+              destination: LAX
+              departure_date: "2026-06-15"
+              departure_time: "08:00:00"
+              arrival_date: "2026-06-15"
+              arrival_time: "11:30:00"
+              aircraft_type: Boeing 737
+              total_seats_economy: 150
+              total_seats_business: 30
+              total_seats_first: 10
+              price_economy: 199.99
+              price_business: 599.99
+              price_first: 1299.99
+              gate: A12
+              terminal: T1
+      responses:
+        '201':
+          description: Flight created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponse'
+        '403':
+          description: Insufficient role
+
+  /api/v1/flights/{flight_id}:
+    get:
+      tags: [Flights]
+      summary: Get flight details by ID
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/flightId'
+      responses:
+        '200':
+          description: Flight details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponse'
+        '404':
+          description: Flight not found
+
+    put:
+      tags: [Flights]
+      summary: Update a flight (admin / airline-staff only)
+      parameters:
+        - $ref: '#/components/parameters/flightId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlightUpdate'
+      responses:
+        '200':
+          description: Flight updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponse'
+        '404':
+          description: Flight not found
+
+  /api/v1/flights/{flight_id}/seats:
+    put:
+      tags: [Flights]
+      summary: Reserve or release seats (internal, optimistic locking)
+      description: |
+        Used by the booking service to atomically update seat counts.
+        Uses optimistic locking via a `version` column to detect concurrent modifications.
+      parameters:
+        - $ref: '#/components/parameters/flightId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeatUpdate'
+            example:
+              cabin_class: economy
+              change: -2
+      responses:
+        '200':
+          description: Seats updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flight_id:
+                    type: string
+                    format: uuid
+                  cabin_class:
+                    type: string
+                  available_seats:
+                    type: integer
+                  version:
+                    type: integer
+        '409':
+          description: Concurrent modification or insufficient seats
+
+  # ── Booking Service ───────────────────────────────────────
+  /api/v1/bookings:
+    post:
+      tags: [Bookings]
+      summary: Create a booking (saga — reserves seats, creates record, emits event)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreate'
+            example:
+              flight_id: 550e8400-e29b-41d4-a716-446655440000
+              passenger_name: Jane Doe
+              passenger_email: jane@example.com
+              cabin_class: economy
+              num_passengers: 2
+              special_requests: Vegetarian meal
+      responses:
+        '201':
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Flight not found
+        '409':
+          description: Not enough seats / concurrent booking
+
+    get:
+      tags: [Bookings]
+      summary: List current user's bookings
+      responses:
+        '200':
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BookingResponse'
+
+  /api/v1/bookings/{booking_id}:
+    get:
+      tags: [Bookings]
+      summary: Get booking by ID
+      parameters:
+        - $ref: '#/components/parameters/bookingId'
+      responses:
+        '200':
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Booking not found
+
+  /api/v1/bookings/{booking_id}/status:
+    put:
+      tags: [Bookings]
+      summary: Update booking status (internal, used by payment service)
+      parameters:
+        - $ref: '#/components/parameters/bookingId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingStatusUpdate'
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '404':
+          description: Booking not found
+
+  /api/v1/bookings/{booking_id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Cancel a booking (compensating transaction restores seats)
+      description: |
+        Triggers the saga compensation flow:
+        1. Releases reserved seats back to the flight.
+        2. Sets booking status to `cancelled`.
+        3. Emits `BookingCancelled` event.
+      parameters:
+        - $ref: '#/components/parameters/bookingId'
+      responses:
+        '200':
+          description: Booking cancelled, seats restored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          description: Booking already cancelled
+        '404':
+          description: Booking not found
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from `/auth/login`
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Partner API key issued on registration with `partner-api` role
+
+  parameters:
+    flightId:
+      name: flight_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    bookingId:
+      name: booking_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+
+    # ── Auth Schemas ────────────────────────────────────────
+    UserRegister:
+      type: object
+      required: [email, username, password, full_name]
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 5
+        username:
+          type: string
+          minLength: 3
+          maxLength: 100
+        password:
+          type: string
+          format: password
+          minLength: 8
+        full_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        role:
+          type: string
+          enum: [passenger, admin, airline-staff, airport-operator, partner-api]
+          default: passenger
+        airport_code:
+          type: string
+          maxLength: 3
+          nullable: true
+          description: Required for airport-operator role (ABAC attribute)
+        airline_code:
+          type: string
+          maxLength: 3
+          nullable: true
+          description: Required for airline-staff role (ABAC attribute)
+
+    UserLogin:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          default: bearer
+        expires_in:
+          type: integer
+          description: Access token lifetime in seconds
+        api_key:
+          type: string
+          nullable: true
+          description: Returned only for partner-api role
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        username:
+          type: string
+        full_name:
+          type: string
+        role:
+          type: string
+        is_active:
+          type: boolean
+        airport_code:
+          type: string
+          nullable: true
+        airline_code:
+          type: string
+          nullable: true
+        api_key:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Flight Schemas ──────────────────────────────────────
+    FlightCreate:
+      type: object
+      required: [flight_number, airline, origin, destination, departure_date, departure_time, arrival_date, arrival_time]
+      properties:
+        flight_number:
+          type: string
+          minLength: 2
+          maxLength: 10
+        airline:
+          type: string
+        origin:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: IATA airport code
+        destination:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: IATA airport code
+        departure_date:
+          type: string
+          format: date
+        departure_time:
+          type: string
+          format: time
+        arrival_date:
+          type: string
+          format: date
+        arrival_time:
+          type: string
+          format: time
+        aircraft_type:
+          type: string
+          nullable: true
+        total_seats_economy:
+          type: integer
+          default: 150
+        total_seats_business:
+          type: integer
+          default: 30
+        total_seats_first:
+          type: integer
+          default: 10
+        price_economy:
+          type: number
+          format: float
+          default: 199.99
+        price_business:
+          type: number
+          format: float
+          default: 599.99
+        price_first:
+          type: number
+          format: float
+          default: 1299.99
+        gate:
+          type: string
+          nullable: true
+        terminal:
+          type: string
+          nullable: true
+
+    FlightUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [scheduled, boarding, departed, in-flight, landed, arrived, cancelled, delayed]
+          nullable: true
+        gate:
+          type: string
+          nullable: true
+        terminal:
+          type: string
+          nullable: true
+        departure_time:
+          type: string
+          format: time
+          nullable: true
+        arrival_time:
+          type: string
+          format: time
+          nullable: true
+        price_economy:
+          type: number
+          nullable: true
+        price_business:
+          type: number
+          nullable: true
+        price_first:
+          type: number
+          nullable: true
+
+    FlightResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        flight_number:
+          type: string
+        airline:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        departure_date:
+          type: string
+          format: date
+        departure_time:
+          type: string
+          format: time
+        arrival_date:
+          type: string
+          format: date
+        arrival_time:
+          type: string
+          format: time
+        status:
+          type: string
+          enum: [scheduled, boarding, departed, in-flight, landed, arrived, cancelled, delayed]
+        aircraft_type:
+          type: string
+          nullable: true
+        available_seats_economy:
+          type: integer
+        available_seats_business:
+          type: integer
+        available_seats_first:
+          type: integer
+        price_economy:
+          type: number
+        price_business:
+          type: number
+        price_first:
+          type: number
+        gate:
+          type: string
+          nullable: true
+        terminal:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    SeatUpdate:
+      type: object
+      required: [cabin_class, change]
+      properties:
+        cabin_class:
+          type: string
+          enum: [economy, business, first]
+        change:
+          type: integer
+          description: Positive to release seats, negative to reserve
+
+    # ── Booking Schemas ─────────────────────────────────────
+    BookingCreate:
+      type: object
+      required: [flight_id, passenger_name, passenger_email]
+      properties:
+        flight_id:
+          type: string
+          format: uuid
+        passenger_name:
+          type: string
+          minLength: 1
+        passenger_email:
+          type: string
+          format: email
+        cabin_class:
+          type: string
+          enum: [economy, business, first]
+          default: economy
+        num_passengers:
+          type: integer
+          minimum: 1
+          maximum: 9
+          default: 1
+        special_requests:
+          type: string
+          nullable: true
+
+    BookingResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        booking_reference:
+          type: string
+          description: Human-readable reference (e.g. AL3F8K2A)
+        user_id:
+          type: string
+          format: uuid
+        flight_id:
+          type: string
+          format: uuid
+        passenger_name:
+          type: string
+        passenger_email:
+          type: string
+        cabin_class:
+          type: string
+        num_passengers:
+          type: integer
+        total_price:
+          type: number
+        status:
+          type: string
+          enum: [pending, confirmed, paid, checked-in, cancelled, refunded]
+        payment_id:
+          type: string
+          format: uuid
+          nullable: true
+        seat_numbers:
+          type: string
+          nullable: true
+        special_requests:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    BookingStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [pending, confirmed, paid, checked-in, cancelled, refunded]
+        payment_id:
+          type: string
+          format: uuid
+          nullable: true

@@ -10,6 +10,7 @@ from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
+from sqlalchemy import text
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
@@ -67,7 +68,9 @@ def _to_response(c: CheckIn) -> CheckInResponse:
         passenger_name=c.passenger_name, seat_number=c.seat_number or "",
         boarding_group=c.boarding_group or "", gate=c.gate,
         status=c.status.value, boarding_pass_url=c.boarding_pass_url,
-        has_baggage=c.has_baggage, created_at=c.created_at,
+        has_baggage=c.has_baggage,
+        seat_selected_by_user=c.seat_selected_by_user if c.seat_selected_by_user is not None else True,
+        created_at=c.created_at,
     )
 
 
@@ -77,7 +80,13 @@ async def lifespan(app: FastAPI):
         try:
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
-            pass  # Table may already exist from another service starting concurrently
+            pass
+        try:
+            await conn.execute(text(
+                "ALTER TABLE checkins ADD COLUMN IF NOT EXISTS seat_selected_by_user BOOLEAN DEFAULT TRUE"
+            ))
+        except Exception:
+            pass
     yield
     await engine.dispose()
 
@@ -100,11 +109,13 @@ async def check_in(data: CheckInRequest,
         raise HTTPException(status_code=409, detail="Already checked in for this booking")
 
     seat, group = resolve_seat(data.seat_preference)
+    selected_by_user = data.seat_selected_by_user if data.seat_selected_by_user is not None else (data.seat_preference is not None)
     checkin = CheckIn(
         booking_id=data.booking_id,
         flight_id=data.flight_id,
         passenger_name=data.passenger_name,
         seat_number=seat,
+        seat_selected_by_user=selected_by_user,
         boarding_group=group,
         status=CheckInStatus.BOARDING_PASS_ISSUED,
         boarding_pass_url=f"/api/v1/checkin/{data.booking_id}/boarding-pass",

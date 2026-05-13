@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bookingClient, checkinClient, flightClient } from "../api/client";
+import { SeatMap, CONFIGS, DEFAULT_CONFIG } from "../components/SeatMap";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface Booking {
@@ -44,6 +45,7 @@ interface CheckInRecord {
   status: string;
   boarding_pass_url: string | null;
   has_baggage: boolean;
+  seat_selected_by_user: boolean;
   created_at: string;
 }
 
@@ -59,6 +61,26 @@ function fmtDate(d: string) {
   });
 }
 
+function pickRandom(
+  aircraftType: string | null,
+  cabinClass: string,
+  bookedSeats: string[],
+): string {
+  const config = (aircraftType && CONFIGS[aircraftType]) ? CONFIGS[aircraftType] : DEFAULT_CONFIG;
+  const section = config.sections.find((s) => s.cabin === cabinClass);
+  if (!section) return "";
+  const booked = new Set(bookedSeats);
+  const available: string[] = [];
+  for (let row = section.rowStart; row <= section.rowEnd; row++) {
+    for (const col of [...section.leftCols, ...section.rightCols]) {
+      const seat = `${row}${col}`;
+      if (!booked.has(seat)) available.push(seat);
+    }
+  }
+  if (available.length === 0) return "";
+  return available[Math.floor(Math.random() * available.length)];
+}
+
 const STATUS_ELIGIBLE = new Set(["confirmed", "paid"]);
 const STATUS_DONE     = new Set(["checked-in", "completed", "boarded"]);
 
@@ -69,13 +91,13 @@ const CABIN_COLOUR: Record<string, string> = {
 };
 
 const BOOKING_STATUS_STYLE: Record<string, string> = {
-  pending:          "bg-yellow-50 text-yellow-700 border border-yellow-200",
-  confirmed:        "bg-blue-50   text-blue-700   border border-blue-200",
-  paid:             "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  "payment-pending":"bg-yellow-50 text-yellow-700 border border-yellow-200",
-  "checked-in":     "bg-sky-50    text-sky-700    border border-sky-200",
-  completed:        "bg-gray-100  text-gray-500",
-  cancelled:        "bg-red-50    text-red-600    border border-red-200",
+  pending:           "bg-yellow-50 text-yellow-700 border border-yellow-200",
+  confirmed:         "bg-blue-50   text-blue-700   border border-blue-200",
+  paid:              "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  "payment-pending": "bg-yellow-50 text-yellow-700 border border-yellow-200",
+  "checked-in":      "bg-sky-50    text-sky-700    border border-sky-200",
+  completed:         "bg-gray-100  text-gray-500",
+  cancelled:         "bg-red-50    text-red-600    border border-red-200",
 };
 
 // ── Boarding Pass ─────────────────────────────────────────────────────────
@@ -134,6 +156,11 @@ function BoardingPass({
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Seat</p>
           <p className="text-2xl font-bold text-gray-900 font-mono mt-0.5">{checkin.seat_number || "—"}</p>
+          <p className={`text-[9px] font-semibold uppercase tracking-wide mt-1 ${
+            checkin.seat_selected_by_user ? "text-emerald-500" : "text-amber-500"
+          }`}>
+            {checkin.seat_selected_by_user ? "chosen by you" : "auto-assigned"}
+          </p>
         </div>
         <div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Group</p>
@@ -197,7 +224,6 @@ function BookingRow({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Look up existing check-in record
   const { data: existingCheckin } = useQuery<CheckInRecord | null>({
     queryKey: ["checkin", booking.id],
     queryFn: async () => {
@@ -209,16 +235,39 @@ function BookingRow({
     retry: false,
   });
 
-  const [expanded, setExpanded] = useState(false);
+  // Seat picker state — only used when booking has no pre-chosen seat
+  const [showSeatPicker, setShowSeatPicker] = useState(false);
+  const [pickedSeat, setPickedSeat]         = useState("");
+  const [isAutoAssigned, setIsAutoAssigned] = useState(false);
+  const [expanded, setExpanded]             = useState(false);
+
+  const hasSeat = !!(booking.seat_numbers?.trim());
+
+  const { data: bookedSeats = [], isLoading: loadingSeats } = useQuery<string[]>({
+    queryKey: ["seat-availability", booking.flight_id],
+    queryFn: async () => {
+      const { data } = await (bookingClient as any).GET("/api/v1/bookings/seat-availability", {
+        params: { query: { flight_id: booking.flight_id } },
+      });
+      return (data as { booked_seats: string[] })?.booked_seats ?? [];
+    },
+    enabled: showSeatPicker,
+  });
+
+  function acceptAnySeat() {
+    const seat = pickRandom(flight?.aircraft_type ?? null, booking.cabin_class, bookedSeats);
+    if (seat) { setPickedSeat(seat); setIsAutoAssigned(true); }
+  }
 
   const checkIn = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await checkinClient.POST("/api/v1/checkin", {
+    mutationFn: async ({ seat, selectedByUser }: { seat: string; selectedByUser: boolean }) => {
+      const { data, error } = await (checkinClient as any).POST("/api/v1/checkin", {
         body: {
-          booking_id: booking.id,
-          flight_id:  booking.flight_id,
-          passenger_name: booking.passenger_name,
-          seat_preference: booking.seat_numbers ?? undefined,
+          booking_id:           booking.id,
+          flight_id:            booking.flight_id,
+          passenger_name:       booking.passenger_name,
+          seat_preference:      seat || undefined,
+          seat_selected_by_user: selectedByUser,
         },
       });
       if (error || !data) throw new Error((error as any)?.detail ?? "Check-in failed");
@@ -227,21 +276,21 @@ function BookingRow({
     onSuccess: (ci) => {
       qc.setQueryData(["checkin", booking.id], ci);
       qc.invalidateQueries({ queryKey: ["bookings"] });
+      setShowSeatPicker(false);
       onCheckedIn(ci);
     },
   });
 
-  const isEligible = STATUS_ELIGIBLE.has(booking.status.toLowerCase());
-  const isDone     = STATUS_DONE.has(booking.status.toLowerCase());
-  const checkin    = existingCheckin ?? (checkIn.isSuccess ? checkIn.data : null);
-  const cabinStyle = CABIN_COLOUR[booking.cabin_class] ?? "bg-gray-100 text-gray-600 border-gray-200";
+  const isEligible  = STATUS_ELIGIBLE.has(booking.status.toLowerCase());
+  const isDone      = STATUS_DONE.has(booking.status.toLowerCase());
+  const checkin     = existingCheckin ?? (checkIn.isSuccess ? checkIn.data : null);
+  const cabinStyle  = CABIN_COLOUR[booking.cabin_class] ?? "bg-gray-100 text-gray-600 border-gray-200";
   const statusStyle = BOOKING_STATUS_STYLE[booking.status.toLowerCase()] ?? "bg-gray-100 text-gray-500";
 
   return (
     <div className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
       {/* Main row */}
       <div className="flex items-center gap-4 px-5 py-4">
-        {/* Left: ref + status */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 mb-1">
             <span className="font-mono font-bold text-blue-700 text-base tracking-wider">
@@ -286,7 +335,7 @@ function BookingRow({
           )}
         </div>
 
-        {/* Right: actions */}
+        {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
           {checkin ? (
             <button
@@ -296,13 +345,25 @@ function BookingRow({
               {expanded ? "Hide Pass" : "Boarding Pass"}
             </button>
           ) : isEligible ? (
-            <button
-              onClick={() => checkIn.mutate()}
-              disabled={checkIn.isPending}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
-            >
-              {checkIn.isPending ? "Checking in…" : "Check In"}
-            </button>
+            hasSeat ? (
+              // Seat already chosen during booking — check in directly
+              <button
+                onClick={() => checkIn.mutate({ seat: booking.seat_numbers!, selectedByUser: true })}
+                disabled={checkIn.isPending}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              >
+                {checkIn.isPending ? "Checking in…" : "Check In"}
+              </button>
+            ) : (
+              // No seat — open picker
+              <button
+                onClick={() => setShowSeatPicker(true)}
+                disabled={showSeatPicker}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition-colors"
+              >
+                {showSeatPicker ? "Select a seat below" : "Check In"}
+              </button>
+            )
           ) : isDone ? (
             <span className="rounded-full bg-emerald-50 border border-emerald-200 text-emerald-600 px-3 py-1.5 text-xs font-semibold">
               ✓ Done
@@ -317,12 +378,65 @@ function BookingRow({
         </div>
       </div>
 
-      {/* Error */}
+      {/* Check-in error */}
       {checkIn.isError && (
         <div className="border-t border-red-100 bg-red-50 px-5 py-2.5">
           <p className="text-xs text-red-600">
             {checkIn.error instanceof Error ? checkIn.error.message : "Check-in failed. Please try again."}
           </p>
+        </div>
+      )}
+
+      {/* Seat picker — shown when no seat was chosen at booking time */}
+      {showSeatPicker && !checkin && (
+        <div className="border-t border-gray-100 px-5 py-5 space-y-4 bg-gray-50/40">
+          <div className="flex items-center justify-between">
+            <h4 className="font-semibold text-gray-800">Choose your seat</h4>
+            <button
+              type="button"
+              onClick={() => { setShowSeatPicker(false); setPickedSeat(""); setIsAutoAssigned(false); }}
+              className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+
+          {/* Accept any available seat */}
+          <button
+            type="button"
+            onClick={acceptAnySeat}
+            disabled={loadingSeats}
+            className="w-full rounded-xl border-2 border-dashed border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50 py-3 text-sm font-semibold text-gray-500 hover:text-blue-600 disabled:opacity-50 transition-colors"
+          >
+            Accept Any Available Seat
+          </button>
+
+          {isAutoAssigned && pickedSeat && (
+            <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+              Seat <span className="font-mono font-bold">{pickedSeat}</span> has been auto-selected for you.
+              You can click a different seat on the map to override.
+            </p>
+          )}
+
+          {/* Seat map */}
+          <SeatMap
+            aircraftType={flight?.aircraft_type ?? null}
+            cabinClass={booking.cabin_class}
+            selectedSeat={pickedSeat}
+            onSeatSelect={(seat) => { setPickedSeat(seat); setIsAutoAssigned(false); }}
+            bookedSeats={bookedSeats}
+            isLoading={loadingSeats}
+          />
+
+          {/* Confirm */}
+          <button
+            type="button"
+            onClick={() => checkIn.mutate({ seat: pickedSeat, selectedByUser: !isAutoAssigned })}
+            disabled={!pickedSeat || checkIn.isPending}
+            className="w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {checkIn.isPending ? "Confirming…" : pickedSeat ? `Confirm Check-In — Seat ${pickedSeat}` : "Select a seat to continue"}
+          </button>
         </div>
       )}
 
@@ -350,14 +464,12 @@ export function CheckInPage() {
     },
   });
 
-  // Separate into groups
-  const upcoming   = bookings.filter((b) => STATUS_ELIGIBLE.has(b.status.toLowerCase()));
-  const checkedIn  = bookings.filter((b) => STATUS_DONE.has(b.status.toLowerCase()));
-  const cancelled  = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
+  const upcoming  = bookings.filter((b) => STATUS_ELIGIBLE.has(b.status.toLowerCase()));
+  const checkedIn = bookings.filter((b) => STATUS_DONE.has(b.status.toLowerCase()));
+  const cancelled = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-gray-900">Online Check-In</h2>
         <p className="mt-1 text-sm text-gray-500">
@@ -382,7 +494,6 @@ export function CheckInPage() {
         </div>
       )}
 
-      {/* Eligible to check in */}
       {upcoming.length > 0 && (
         <section className="space-y-3">
           <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">
@@ -395,7 +506,6 @@ export function CheckInPage() {
         </section>
       )}
 
-      {/* Already checked in */}
       {checkedIn.length > 0 && (
         <section className="space-y-3">
           <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">
@@ -408,7 +518,6 @@ export function CheckInPage() {
         </section>
       )}
 
-      {/* Cancelled bookings */}
       {cancelled.length > 0 && (
         <section className="space-y-3">
           <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">
@@ -420,6 +529,9 @@ export function CheckInPage() {
           ))}
         </section>
       )}
+
+      {/* suppress unused-variable warnings */}
+      {selectedCheckin && selectedBooking && null}
     </div>
   );
 }

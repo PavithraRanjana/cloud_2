@@ -26,4 +26,5 @@ class CheckIn(Base):
     status = Column(SAEnum(CheckInStatus), default=CheckInStatus.CHECKED_IN, nullable=False)
     boarding_pass_url = Column(String(500), nullable=True)
     has_baggage = Column(Boolean, default=False)
+    seat_selected_by_user = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

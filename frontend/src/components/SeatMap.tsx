@@ -1,4 +1,4 @@
-interface Section {
+export interface Section {
   cabin: string;
   rowStart: number;
   rowEnd: number;
@@ -10,7 +10,7 @@ interface AircraftConfig {
   sections: Section[];
 }
 
-const CONFIGS: Record<string, AircraftConfig> = {
+export const CONFIGS: Record<string, AircraftConfig> = {
   "Airbus A320": {
     sections: [
       { cabin: "business", rowStart: 1, rowEnd: 5,  leftCols: ["A","B"],       rightCols: ["D","E"]       },
@@ -40,7 +40,7 @@ const CONFIGS: Record<string, AircraftConfig> = {
   },
 };
 
-const DEFAULT_CONFIG: AircraftConfig = {
+export const DEFAULT_CONFIG: AircraftConfig = {
   sections: [
     { cabin: "business", rowStart: 1, rowEnd: 5,  leftCols: ["A","B"],     rightCols: ["D","E"]     },
     { cabin: "economy",  rowStart: 6, rowEnd: 35, leftCols: ["A","B","C"], rightCols: ["D","E","F"] },

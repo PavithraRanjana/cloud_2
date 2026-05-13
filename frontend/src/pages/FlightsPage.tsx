@@ -216,6 +216,8 @@ export function FlightsPage() {
     departure_date: "",
     cabin_class: "",
   });
+  const [tripType,    setTripType]    = useState<"one_way" | "return">("one_way");
+  const [returnDate,  setReturnDate]  = useState("");
 
   // Load all flights on mount; refetch when filters change
   const { data: flights = [], isFetching, isError } = useQuery<Flight[]>({
@@ -238,7 +240,7 @@ export function FlightsPage() {
   });
 
   function handleBook(flight: Flight) {
-    navigate("/book", { state: { flight, cabinClass: filters.cabin_class } });
+    navigate("/book", { state: { flight, cabinClass: filters.cabin_class, tripType, returnDate } });
   }
 
   return (
@@ -246,8 +248,27 @@ export function FlightsPage() {
       <h2 className="text-2xl font-bold text-gray-900">Search Flights</h2>
 
       {/* Search form */}
-      <div className="rounded-2xl bg-white p-5 shadow-sm border border-gray-100">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="rounded-2xl bg-white p-5 shadow-sm border border-gray-100 space-y-4">
+
+        {/* Trip type toggle */}
+        <div className="flex gap-2">
+          {(["one_way", "return"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => { setTripType(t); if (t === "one_way") setReturnDate(""); }}
+              className={`rounded-lg px-4 py-1.5 text-sm font-semibold transition-colors ${
+                tripType === t
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+              }`}
+            >
+              {t === "one_way" ? "One Way" : "Return"}
+            </button>
+          ))}
+        </div>
+
+        <div className={`grid grid-cols-2 gap-4 ${tripType === "return" ? "sm:grid-cols-5" : "sm:grid-cols-4"}`}>
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
               From
@@ -283,6 +304,21 @@ export function FlightsPage() {
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
+
+          {tripType === "return" && (
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Return Date
+              </label>
+              <input
+                type="date"
+                value={returnDate}
+                min={filters.departure_date || undefined}
+                onChange={(e) => setReturnDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          )}
 
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">

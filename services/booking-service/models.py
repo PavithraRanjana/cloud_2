@@ -33,6 +33,8 @@ class Booking(Base):
     payment_id = Column(UUID(as_uuid=True), nullable=True)
     seat_numbers = Column(Text, nullable=True)
     special_requests = Column(Text, nullable=True)
+    trip_type = Column(String(10), nullable=False, default="one_way")   # one_way | return
+    group_booking_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

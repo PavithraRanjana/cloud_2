@@ -63,6 +63,7 @@ def _to_response(b: Booking) -> BookingResponse:
         num_passengers=b.num_passengers, total_price=b.total_price,
         status=b.status.value, payment_id=str(b.payment_id) if b.payment_id else None,
         seat_numbers=b.seat_numbers, special_requests=b.special_requests,
+        trip_type=b.trip_type, group_booking_id=str(b.group_booking_id) if b.group_booking_id else None,
         created_at=b.created_at,
     )
 
@@ -117,6 +118,8 @@ async def create_booking(data: BookingCreate,
         seat_resp.raise_for_status()
 
     # Step 3: Create booking record
+    import uuid as _uuid
+    group_id = _uuid.UUID(data.group_booking_id) if data.group_booking_id else None
     booking = Booking(
         booking_reference=generate_booking_ref(),
         user_id=current_user["sub"],
@@ -128,6 +131,8 @@ async def create_booking(data: BookingCreate,
         total_price=total_price,
         status=BookingStatus.PENDING,
         special_requests=data.special_requests,
+        trip_type=data.trip_type,
+        group_booking_id=group_id,
     )
     db.add(booking)
     await db.flush()
@@ -179,9 +184,22 @@ async def update_booking_status(booking_id: str, data: BookingStatusUpdate,
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
 
-    booking.status = BookingStatus(data.status)
+    new_status = BookingStatus(data.status)
+    booking.status = new_status
     if data.payment_id:
         booking.payment_id = data.payment_id
+
+    # For return trips: cascade status to the other leg in the same group
+    if booking.group_booking_id:
+        linked = await db.execute(
+            select(Booking).where(
+                Booking.group_booking_id == booking.group_booking_id,
+                Booking.id != booking.id,
+            )
+        )
+        for sibling in linked.scalars().all():
+            sibling.status = new_status
+
     await db.flush()
     await db.refresh(booking)
     return _to_response(booking)

@@ -10,6 +10,8 @@ class BookingCreate(BaseModel):
     cabin_class: str = "economy"
     num_passengers: int = Field(1, ge=1, le=9)
     special_requests: Optional[str] = None
+    trip_type: str = "one_way"              # one_way | return
+    group_booking_id: Optional[str] = None  # UUID linking both legs of a return trip
 
 
 class BookingResponse(BaseModel):
@@ -26,6 +28,8 @@ class BookingResponse(BaseModel):
     payment_id: Optional[str]
     seat_numbers: Optional[str]
     special_requests: Optional[str]
+    trip_type: str
+    group_booking_id: Optional[str]
     created_at: datetime
 
     class Config:

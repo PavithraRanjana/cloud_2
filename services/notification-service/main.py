@@ -180,9 +180,26 @@ async def create_notification(data: NotificationCreate,
 @app.get("/api/v1/notifications", response_model=list[NotificationResponse])
 async def list_notifications(current_user: dict = Depends(get_current_user),
                              db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Notification).order_by(Notification.created_at.desc()).limit(50))
+    user_email = current_user.get("email", "")
+    query = select(Notification).order_by(Notification.created_at.desc()).limit(50)
+    if user_email:
+        query = query.where(Notification.recipient_email == user_email)
+    result = await db.execute(query)
     return [_to_response(n) for n in result.scalars().all()]
+
+
+@app.patch("/api/v1/notifications/{notification_id}/read", response_model=NotificationResponse)
+async def mark_read(notification_id: str,
+                    current_user: dict = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notification = result.scalar_one_or_none()
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    notification.is_read = True
+    await db.flush()
+    await db.refresh(notification)
+    return _to_response(notification)
 
 
 if __name__ == "__main__":

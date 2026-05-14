@@ -1,17 +1,32 @@
 import { NavLink, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
+import { notificationClient } from "../api/client";
 
 const links = [
-  { to: "/",            label: "Dashboard" },
-  { to: "/flights",     label: "Flights"   },
-  { to: "/bookings",    label: "Bookings"  },
-  { to: "/checkin",     label: "Check-in"  },
-  { to: "/baggage",     label: "Baggage"   },
+  { to: "/",            label: "Dashboard"      },
+  { to: "/flights",     label: "Flights"        },
+  { to: "/bookings",    label: "Bookings"       },
+  { to: "/checkin",     label: "Check-in"       },
+  { to: "/baggage",     label: "Baggage"        },
+  { to: "/notifications", label: "Notifications" },
 ];
 
 export function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const { data: notifications = [] } = useQuery<{ is_read: boolean }[]>({
+    queryKey: ["notifications"],
+    queryFn: async () => {
+      const { data } = await notificationClient.GET("/api/v1/notifications", {});
+      return (data as { is_read: boolean }[]) ?? [];
+    },
+    refetchInterval: 30_000,
+    staleTime: 0,
+  });
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   function handleLogout() {
     logout();
@@ -30,14 +45,17 @@ export function Navbar() {
               to={to}
               end={to === "/"}
               className={({ isActive }) =>
-                `rounded px-3 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "bg-white/20"
-                    : "hover:bg-white/10"
+                `relative rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                  isActive ? "bg-white/20" : "hover:bg-white/10"
                 }`
               }
             >
               {label}
+              {to === "/notifications" && unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

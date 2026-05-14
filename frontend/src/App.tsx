@@ -13,6 +13,7 @@ import { CheckInPage } from "./pages/CheckInPage";
 import { BaggagePage } from "./pages/BaggagePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { BookFlightPage } from "./pages/BookFlightPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -34,7 +35,8 @@ export default function App() {
                 <Route path="bookings" element={<ErrorBoundary><BookingsPage /></ErrorBoundary>} />
                 <Route path="checkin"  element={<ErrorBoundary><CheckInPage /></ErrorBoundary>} />
                 <Route path="baggage"  element={<ErrorBoundary><BaggagePage /></ErrorBoundary>} />
-                <Route path="profile"  element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
+                <Route path="profile"       element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
+                <Route path="notifications" element={<ErrorBoundary><NotificationsPage /></ErrorBoundary>} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

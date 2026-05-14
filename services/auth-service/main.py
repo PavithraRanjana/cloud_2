@@ -108,6 +108,7 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     # Include ABAC attributes in JWT claims
     token_data = {
         "sub": str(user.id),
+        "email": user.email,
         "username": user.username,
         "role": user.role.value,
         "airport_code": user.airport_code,
@@ -128,8 +129,8 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Invalid token type")
     token_data = {
-        "sub": payload["sub"], "username": payload["username"],
-        "role": payload["role"],
+        "sub": payload["sub"], "email": payload.get("email", ""),
+        "username": payload["username"], "role": payload["role"],
         "airport_code": payload.get("airport_code"),
         "airline_code": payload.get("airline_code"),
     }

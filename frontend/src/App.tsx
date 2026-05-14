@@ -14,6 +14,7 @@ import { BaggagePage } from "./pages/BaggagePage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { BookFlightPage } from "./pages/BookFlightPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { BaggageTrackingPage } from "./pages/BaggageTrackingPage";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -37,6 +38,7 @@ export default function App() {
                 <Route path="baggage"  element={<ErrorBoundary><BaggagePage /></ErrorBoundary>} />
                 <Route path="profile"       element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
                 <Route path="notifications" element={<ErrorBoundary><NotificationsPage /></ErrorBoundary>} />
+                <Route path="track"         element={<ErrorBoundary><BaggageTrackingPage /></ErrorBoundary>} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

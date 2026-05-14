@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bookingClient, baggageClient, flightClient } from "../api/client";
 
@@ -229,9 +230,17 @@ export function BaggagePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-gray-900">Baggage</h2>
-        <p className="mt-1 text-sm text-gray-500">Register and track your baggage for each booking.</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Baggage</h2>
+          <p className="mt-1 text-sm text-gray-500">Register and track your baggage for each booking.</p>
+        </div>
+        <Link
+          to="/track"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shrink-0"
+        >
+          <span>🔍</span> Track by Tag
+        </Link>
       </div>
 
       {isLoading && <p className="text-sm text-gray-400 animate-pulse">Loading bookings…</p>}

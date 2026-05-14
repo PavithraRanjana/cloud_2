@@ -101,7 +101,8 @@ function BookingCard({ booking }: { booking: Booking }) {
       const { data } = await (paymentClient as any).GET("/api/v1/payments/booking/{booking_id}", {
         params: { path: { booking_id: booking.id } },
       });
-      return (data as Payment) ?? null;
+      const list = data as Payment[];
+      return Array.isArray(list) ? (list[0] ?? null) : null;
     },
     retry: false,
   });
@@ -114,6 +115,19 @@ function BookingCard({ booking }: { booking: Booking }) {
       if (error) throw new Error("Cancel failed");
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookings"] }),
+  });
+
+  const refund = useMutation({
+    mutationFn: async () => {
+      const { error } = await (paymentClient as any).POST(`/api/v1/payments/${payment!.id}/refund`, {
+        body: { reason: "Customer requested refund" },
+      });
+      if (error) throw new Error("Refund failed");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payment", booking.id] });
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+    },
   });
 
   const isCancellable = !["cancelled", "checked-in", "completed", "boarded"].includes(booking.status.toLowerCase());
@@ -227,6 +241,28 @@ function BookingCard({ booking }: { booking: Booking }) {
               </>
             )}
           </div>
+          {payment.status === "completed" && (
+            <div className="pt-2 border-t border-gray-100 mt-2">
+              {refund.isError && (
+                <p className="text-xs text-red-500 mb-1">
+                  {refund.error instanceof Error ? refund.error.message : "Refund failed"}
+                </p>
+              )}
+              <button
+                onClick={() => {
+                  if (confirm("Request a full refund of $" + payment.amount.toFixed(2) + "? This cannot be undone."))
+                    refund.mutate();
+                }}
+                disabled={refund.isPending}
+                className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
+              >
+                {refund.isPending ? "Processing…" : "Request Refund"}
+              </button>
+            </div>
+          )}
+          {payment.status === "refunded" && (
+            <p className="pt-2 text-xs text-gray-400 italic">Refund has been processed.</p>
+          )}
         </div>
       )}
 

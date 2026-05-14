@@ -456,7 +456,7 @@ export function BookFlightPage() {
           cabin_class:      cabin,
           trip_type:        isReturn ? "return" : "one_way",
           group_booking_id: groupId,
-          seat_number:      selectedSeat || undefined,
+          seat_number:      selectedSeat,
           ...commonPassengerFields,
         } as any,
       });
@@ -474,7 +474,7 @@ export function BookFlightPage() {
             cabin_class:      returnCabin,
             trip_type:        "return",
             group_booking_id: groupId,
-            seat_number:      selectedReturnSeat || undefined,
+            seat_number:      selectedReturnSeat,
             ...commonPassengerFields,
           } as any,
         });
@@ -988,7 +988,11 @@ export function BookFlightPage() {
 
                 <div className="flex gap-3 pt-2">
                   <button onClick={handleBack} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Back</button>
-                  <button onClick={handleNext} className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">Continue →</button>
+                  <button onClick={handleNext}
+                    disabled={!selectedSeat || (isReturn && !!returnFlight && !selectedReturnSeat)}
+                    className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                    Continue →
+                  </button>
                 </div>
               </div>
             )}

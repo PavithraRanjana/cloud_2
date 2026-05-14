@@ -6,7 +6,8 @@ import random
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
@@ -157,22 +158,220 @@ async def get_checkin(booking_id: str, db: AsyncSession = Depends(get_db)):
     return _to_response(checkin)
 
 
-@app.get("/api/v1/checkin/{booking_id}/boarding-pass")
-async def get_boarding_pass(booking_id: str, db: AsyncSession = Depends(get_db)):
+@app.get("/api/v1/checkin/{booking_id}/boarding-pass", response_class=HTMLResponse)
+async def get_boarding_pass(
+    booking_id: str,
+    request: Request,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     result = await db.execute(select(CheckIn).where(CheckIn.booking_id == booking_id))
     checkin = result.scalar_one_or_none()
     if not checkin:
         raise HTTPException(status_code=404, detail="Check-in not found")
-    return {
-        "boarding_pass": {
-            "passenger": checkin.passenger_name,
-            "seat": checkin.seat_number,
-            "boarding_group": checkin.boarding_group,
-            "gate": checkin.gate or "TBA",
-            "flight_id": str(checkin.flight_id),
-            "status": "READY TO BOARD",
-        }
-    }
+
+    auth_header = request.headers.get("Authorization", "")
+
+    flight, booking = None, None
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            fr = await client.get(f"{config.flight_service_url}/api/v1/flights/{checkin.flight_id}")
+            if fr.status_code == 200:
+                flight = fr.json()
+        except Exception:
+            pass
+        try:
+            br = await client.get(
+                f"{config.booking_service_url}/api/v1/bookings/{booking_id}",
+                headers={"Authorization": auth_header},
+            )
+            if br.status_code == 200:
+                booking = br.json()
+        except Exception:
+            pass
+
+    def fmt_time(t: str) -> str:
+        if not t:
+            return "—"
+        parts = t[:5].split(":")
+        h = int(parts[0])
+        m = parts[1] if len(parts) > 1 else "00"
+        period = "PM" if h >= 12 else "AM"
+        return f"{h % 12 or 12}:{m} {period}"
+
+    def fmt_date(d: str) -> str:
+        if not d:
+            return "—"
+        from datetime import date as dt
+        try:
+            parsed = dt.fromisoformat(d)
+            return parsed.strftime("%a, %b %-d %Y")
+        except Exception:
+            return d
+
+    passenger_name = checkin.passenger_name.upper()
+    seat           = checkin.seat_number or "—"
+    group          = checkin.boarding_group or "—"
+    gate           = checkin.gate or (flight or {}).get("gate") or "TBA"
+    flight_num     = (flight or {}).get("flight_number", "—")
+    airline        = (flight or {}).get("airline", "")
+    origin         = (flight or {}).get("origin", "—")
+    destination    = (flight or {}).get("destination", "—")
+    dep_time       = fmt_time((flight or {}).get("departure_time", ""))
+    arr_time       = fmt_time((flight or {}).get("arrival_time", ""))
+    dep_date       = fmt_date((flight or {}).get("departure_date", ""))
+    cabin          = ((booking or {}).get("cabin_class") or "economy").capitalize()
+    ref            = (booking or {}).get("booking_reference", "—")
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Boarding Pass – {passenger_name}</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+         background: #f0f4ff; display: flex; justify-content: center;
+         align-items: flex-start; min-height: 100vh; padding: 40px 16px; }}
+  .card {{ background: #fff; border-radius: 20px; overflow: hidden;
+           width: 480px; box-shadow: 0 8px 40px rgba(0,0,0,0.12); }}
+  .header {{ background: linear-gradient(135deg, #1d4ed8, #3b82f6);
+             padding: 24px 28px; color: #fff; }}
+  .header-top {{ display: flex; justify-content: space-between; align-items: center;
+                 margin-bottom: 16px; }}
+  .logo {{ display: flex; align-items: center; gap: 8px;
+           font-weight: 800; font-size: 13px; letter-spacing: 3px; }}
+  .badge {{ background: rgba(255,255,255,0.2); border-radius: 100px;
+            padding: 3px 12px; font-size: 11px; font-weight: 700;
+            letter-spacing: 1px; text-transform: uppercase; }}
+  .pax-label {{ font-size: 10px; color: rgba(255,255,255,0.6);
+                letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px; }}
+  .pax-name {{ font-size: 26px; font-weight: 800; letter-spacing: 1px; }}
+  .route {{ background: #eff6ff; padding: 18px 28px;
+            display: flex; align-items: center; gap: 12px;
+            border-bottom: 1px solid #dbeafe; }}
+  .airport {{ text-align: center; flex: 1; }}
+  .airport-code {{ font-size: 28px; font-weight: 900; color: #1d4ed8;
+                   font-family: 'Courier New', monospace; }}
+  .airport-time {{ font-size: 12px; color: #6b7280; margin-top: 2px; }}
+  .divider {{ flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }}
+  .line {{ width: 100%; height: 1px; background: #bfdbfe; }}
+  .flight-label {{ font-size: 10px; color: #93c5fd; font-weight: 600; }}
+  .details {{ display: grid; grid-template-columns: repeat(3, 1fr);
+              gap: 18px; padding: 22px 28px; }}
+  .detail-label {{ font-size: 9px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: 2px; color: #9ca3af; margin-bottom: 4px; }}
+  .detail-value {{ font-size: 26px; font-weight: 900; color: #111827;
+                   font-family: 'Courier New', monospace; line-height: 1; }}
+  .detail-value.sm {{ font-size: 13px; font-weight: 700; padding-top: 6px; }}
+  .tear {{ border-top: 2px dashed #bfdbfe; margin: 0 20px; }}
+  .footer {{ padding: 16px 28px; background: #f9fafb;
+             display: flex; justify-content: space-between; align-items: center; }}
+  .barcode {{ display: flex; gap: 2px; align-items: center; }}
+  .bar {{ background: #1f2937; border-radius: 2px; }}
+  .status-block {{ text-align: right; }}
+  .status-label {{ font-size: 9px; font-weight: 700; text-transform: uppercase;
+                   letter-spacing: 2px; color: #9ca3af; }}
+  .status-value {{ font-size: 13px; font-weight: 800; color: #059669;
+                   text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }}
+  @media print {{
+    body {{ background: #fff; padding: 0; }}
+    .card {{ box-shadow: none; width: 100%; border-radius: 0; }}
+    .no-print {{ display: none !important; }}
+  }}
+  .download-btn {{
+    display: block; margin: 28px auto 0; padding: 12px 36px;
+    background: #2563eb; color: #fff; border: none; border-radius: 10px;
+    font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: 0.5px;
+  }}
+  .download-btn:hover {{ background: #1d4ed8; }}
+</style>
+</head>
+<body>
+<div>
+  <div class="card">
+    <div class="header">
+      <div class="header-top">
+        <div class="logo">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+          </svg>
+          AEROLINK
+        </div>
+        <span class="badge">Boarding Pass</span>
+      </div>
+      <div class="pax-label">Passenger</div>
+      <div class="pax-name">{passenger_name}</div>
+    </div>
+
+    <div class="route">
+      <div class="airport">
+        <div class="airport-code">{origin}</div>
+        <div class="airport-time">{dep_time}</div>
+      </div>
+      <div class="divider">
+        <div class="line"></div>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#93c5fd">
+          <path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+        </svg>
+        <div class="line"></div>
+        <div class="flight-label">{flight_num} · {airline}</div>
+      </div>
+      <div class="airport">
+        <div class="airport-code">{destination}</div>
+        <div class="airport-time">{arr_time}</div>
+      </div>
+    </div>
+
+    <div class="details">
+      <div>
+        <div class="detail-label">Seat</div>
+        <div class="detail-value">{seat}</div>
+      </div>
+      <div>
+        <div class="detail-label">Group</div>
+        <div class="detail-value">{group}</div>
+      </div>
+      <div>
+        <div class="detail-label">Gate</div>
+        <div class="detail-value">{gate}</div>
+      </div>
+      <div>
+        <div class="detail-label">Date</div>
+        <div class="detail-value sm">{dep_date}</div>
+      </div>
+      <div>
+        <div class="detail-label">Cabin</div>
+        <div class="detail-value sm">{cabin}</div>
+      </div>
+      <div>
+        <div class="detail-label">Ref</div>
+        <div class="detail-value sm" style="color:#2563eb;font-size:14px">{ref}</div>
+      </div>
+    </div>
+
+    <div class="tear"></div>
+
+    <div class="footer">
+      <div class="barcode">
+        {"".join(f'<div class="bar" style="width:{"3" if i%3==0 else "1"}px;height:{"32" if i%5==0 else "22"}px"></div>' for i in range(40))}
+      </div>
+      <div class="status-block">
+        <div class="status-label">Status</div>
+        <div class="status-value">Ready to board</div>
+      </div>
+    </div>
+  </div>
+
+  <button class="download-btn no-print" onclick="window.print()">
+    Print / Save as PDF
+  </button>
+</div>
+<script>window.onload = function() {{ window.print(); }}</script>
+</body>
+</html>"""
+
+    return HTMLResponse(content=html)
 
 
 if __name__ == "__main__":

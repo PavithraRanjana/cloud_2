@@ -203,6 +203,7 @@ services:
       - SERVICE_NAME=checkin-service
       - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
       - BOOKING_SERVICE_URL=http://booking-service:8003
+      - FLIGHT_SERVICE_URL=http://flight-service:8002
       - AWS_ENDPOINT_URL=http://localstack:4566
       - REDIS_URL=redis://redis:6379/5
     depends_on:

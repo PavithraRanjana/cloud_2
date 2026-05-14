@@ -185,7 +185,8 @@ function BookingRow({
   onCheckedIn: (checkin: CheckInRecord) => void;
 }) {
   const qc = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded]             = useState(false);
+  const [downloading, setDownloading]       = useState(false);
 
   const { data: flight, isLoading: loadingFlight } = useQuery<Flight>({
     queryKey: ["flight", booking.flight_id],
@@ -209,6 +210,27 @@ function BookingRow({
     },
     retry: false,
   });
+
+  async function openBoardingPass() {
+    setDownloading(true);
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`/api/v1/checkin/${booking.id}/boarding-pass`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch boarding pass");
+      const html = await res.text();
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+      }
+    } catch {
+      // silently fail — browser blocked popup or network error
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   const checkIn = useMutation({
     mutationFn: async () => {
@@ -288,12 +310,30 @@ function BookingRow({
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
           {checkin ? (
-            <button
-              onClick={() => setExpanded((v) => !v)}
-              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 transition-colors"
-            >
-              {expanded ? "Hide Pass" : "Boarding Pass"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setExpanded((v) => !v)}
+                className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-700 transition-colors"
+              >
+                {expanded ? "Hide Pass" : "Boarding Pass"}
+              </button>
+              <button
+                onClick={openBoardingPass}
+                disabled={downloading}
+                title="Download boarding pass as PDF"
+                className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-700 hover:bg-sky-100 disabled:opacity-50 transition-colors"
+              >
+                {downloading ? (
+                  <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                )}
+              </button>
+            </div>
           ) : isEligible ? (
             <button
               onClick={() => checkIn.mutate()}

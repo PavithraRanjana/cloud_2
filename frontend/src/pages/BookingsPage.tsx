@@ -63,6 +63,7 @@ const BOOKING_STATUS: Record<string, string> = {
   "checked-in":      "bg-sky-50    text-sky-700    border-sky-200",
   completed:         "bg-gray-100  text-gray-500   border-gray-200",
   cancelled:         "bg-red-50    text-red-600    border-red-200",
+  refunded:          "bg-red-50    text-red-600    border-red-200",
 };
 
 const PAYMENT_STATUS: Record<string, string> = {
@@ -130,9 +131,12 @@ function BookingCard({ booking }: { booking: Booking }) {
     },
   });
 
-  const isCancellable = !["cancelled", "checked-in", "completed", "boarded"].includes(booking.status.toLowerCase());
-  const isCheckable   = ["confirmed", "paid"].includes(booking.status.toLowerCase());
-  const statusStyle   = BOOKING_STATUS[booking.status.toLowerCase()] ?? "bg-gray-100 text-gray-500 border-gray-200";
+  const status        = booking.status.toLowerCase();
+  const isCancellable = !["cancelled", "refunded", "checked-in", "completed", "boarded"].includes(status);
+  const isCheckedIn   = ["checked-in", "boarded"].includes(status);
+  const isCheckable   = ["confirmed", "paid"].includes(status);
+  const canRefund     = payment?.status === "completed" && !isCheckedIn && !["cancelled", "refunded"].includes(status);
+  const statusStyle   = BOOKING_STATUS[status] ?? "bg-gray-100 text-gray-500 border-gray-200";
   const cabinStyle    = CABIN_COLOUR[booking.cabin_class] ?? "bg-gray-100 text-gray-600 border-gray-200";
 
   return (
@@ -241,7 +245,7 @@ function BookingCard({ booking }: { booking: Booking }) {
               </>
             )}
           </div>
-          {payment.status === "completed" && (
+          {canRefund && (
             <div className="pt-2 border-t border-gray-100 mt-2">
               {refund.isError && (
                 <p className="text-xs text-red-500 mb-1">
@@ -250,7 +254,7 @@ function BookingCard({ booking }: { booking: Booking }) {
               )}
               <button
                 onClick={() => {
-                  if (confirm("Request a full refund of $" + payment.amount.toFixed(2) + "? This cannot be undone."))
+                  if (confirm("Request a full refund of $" + payment.amount.toFixed(2) + "? Your booking will be cancelled."))
                     refund.mutate();
                 }}
                 disabled={refund.isPending}
@@ -261,7 +265,7 @@ function BookingCard({ booking }: { booking: Booking }) {
             </div>
           )}
           {payment.status === "refunded" && (
-            <p className="pt-2 text-xs text-gray-400 italic">Refund has been processed.</p>
+            <p className="pt-2 text-xs text-gray-400 italic">Refund processed — booking cancelled.</p>
           )}
         </div>
       )}
@@ -317,8 +321,8 @@ export function BookingsPage() {
     },
   });
 
-  const active    = bookings.filter((b) => !["cancelled"].includes(b.status.toLowerCase()));
-  const cancelled = bookings.filter((b) => b.status.toLowerCase() === "cancelled");
+  const active    = bookings.filter((b) => !["cancelled", "refunded"].includes(b.status.toLowerCase()));
+  const cancelled = bookings.filter((b) => ["cancelled", "refunded"].includes(b.status.toLowerCase()));
 
   return (
     <div className="space-y-6">

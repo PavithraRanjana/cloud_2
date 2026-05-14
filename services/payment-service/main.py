@@ -254,12 +254,12 @@ async def refund_payment(payment_id: str, data: RefundRequest, request: Request,
                        detail=f"Amount: {payment.amount} {payment.currency}, Reason: {data.reason}",
                        ip_address=client_ip)
 
-    # Compensating transaction: update booking to refunded
+    # Compensating transaction: cancel the booking
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.put(
                 f"{config.booking_service_url}/api/v1/bookings/{payment.booking_id}/status",
-                json={"status": "refunded"}
+                json={"status": "cancelled"}
             )
     except Exception:
         pass

@@ -38,18 +38,16 @@ except Exception:
 
 
 def resolve_seat(seat_preference: str | None) -> tuple[str, str]:
-    """Use the booked seat if provided; otherwise fall back to random assignment."""
-    if seat_preference:
-        seat = seat_preference.strip().split(",")[0].strip()
-        if seat:
-            row_str = "".join(c for c in seat if c.isdigit())
-            row = int(row_str) if row_str else 15
-            group = "A" if row <= 10 else "B" if row <= 20 else "C"
-            return seat, group
-    row = random.randint(1, 35)
-    col = random.choice(["A", "B", "C", "D", "E", "F"])
+    seat = (seat_preference or "").strip().split(",")[0].strip()
+    if not seat:
+        # Safety fallback — should not occur; all bookings now require a seat
+        row = random.randint(1, 35)
+        col = random.choice(["A", "B", "C", "D", "E", "F"])
+        seat = f"{row}{col}"
+    row_str = "".join(c for c in seat if c.isdigit())
+    row = int(row_str) if row_str else 15
     group = "A" if row <= 10 else "B" if row <= 20 else "C"
-    return f"{row}{col}", group
+    return seat, group
 
 
 async def get_db():

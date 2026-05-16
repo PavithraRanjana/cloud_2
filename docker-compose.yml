@@ -42,6 +42,7 @@ services:
     volumes:
       - "./infrastructure/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
       - "./lambdas:/opt/code/localstack/lambdas"
+      - "/var/run/docker.sock:/var/run/docker.sock"
       - localstack_data:/var/lib/localstack
 
   # ──────────────────────────────────────────────

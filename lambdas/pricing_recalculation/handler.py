@@ -10,7 +10,7 @@ import json
 import logging
 import os
 
-import psycopg2
+import pg8000.dbapi as pg8000
 
 logger = logging.getLogger("pricing_recalculation")
 logger.setLevel(logging.INFO)
@@ -67,11 +67,10 @@ def handler(event, context):
     """
     logger.info("Pricing recalculation started")
 
-    conn = psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
+    conn = pg8000.connect(
+        host=DB_HOST, port=int(DB_PORT), database=DB_NAME,
         user=DB_USER, password=DB_PASSWORD,
     )
-    conn.autocommit = False
     cursor = conn.cursor()
 
     try:
@@ -81,7 +80,7 @@ def handler(event, context):
                    total_seats_business, available_seats_business, price_business,
                    total_seats_first,    available_seats_first,    price_first
             FROM flights
-            WHERE status = 'scheduled'
+            WHERE status::text = 'SCHEDULED'
         """)
         flights = cursor.fetchall()
         logger.info("Found %d scheduled flights to evaluate", len(flights))
@@ -93,12 +92,12 @@ def handler(event, context):
              total_biz, avail_biz, price_biz,
              total_first, avail_first, price_first) = row
 
-            new_eco = _adjust_price(price_eco, avail_eco, total_eco, "economy")
-            new_biz = _adjust_price(price_biz, avail_biz, total_biz, "business")
-            new_fst = _adjust_price(price_first, avail_first, total_first, "first")
+            new_eco = _adjust_price(float(price_eco), avail_eco, total_eco, "economy")
+            new_biz = _adjust_price(float(price_biz), avail_biz, total_biz, "business")
+            new_fst = _adjust_price(float(price_first), avail_first, total_first, "first")
 
-            if (new_eco != price_eco or new_biz != price_biz
-                    or new_fst != price_first):
+            if (new_eco != float(price_eco) or new_biz != float(price_biz)
+                    or new_fst != float(price_first)):
                 cursor.execute("""
                     UPDATE flights
                     SET price_economy = %s,
@@ -106,26 +105,21 @@ def handler(event, context):
                         price_first = %s,
                         updated_at = NOW()
                     WHERE id = %s
-                """, (new_eco, new_biz, new_fst, flight_id))
+                """, (new_eco, new_biz, new_fst, str(flight_id)))
                 updated += 1
                 logger.info(
-                    "Updated %s: economy %.2f->%.2f, business %.2f->%.2f, "
-                    "first %.2f->%.2f",
+                    "Updated %s: economy %.2f->%.2f, business %.2f->%.2f, first %.2f->%.2f",
                     flight_number,
-                    price_eco, new_eco, price_biz, new_biz,
-                    price_first, new_fst,
+                    float(price_eco), new_eco, float(price_biz), new_biz,
+                    float(price_first), new_fst,
                 )
 
         conn.commit()
-        logger.info("Pricing recalculation complete: %d/%d flights updated",
-                    updated, len(flights))
+        logger.info("Pricing recalculation complete: %d/%d flights updated", updated, len(flights))
 
         return {
             "statusCode": 200,
-            "body": json.dumps({
-                "evaluated": len(flights),
-                "updated": updated,
-            }),
+            "body": json.dumps({"evaluated": len(flights), "updated": updated}),
         }
 
     except Exception as e:

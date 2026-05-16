@@ -57,6 +57,9 @@ awslocal events put-targets \
 
 echo "Created rule: PaymentCompleted -> notifications"
 
+# NOTE: payment-processed-to-notifications is intentionally NOT created here.
+# payment-service publishes PaymentCompleted (not PaymentProcessed).
+
 # Rule 3: CheckInCompleted -> notification queue
 awslocal events put-rule \
   --name checkin-completed-to-notifications \
@@ -139,18 +142,17 @@ echo "Created rule: PaymentRefunded -> notifications"
 awslocal s3 mb s3://aerolink-documents
 echo "Created S3 bucket: aerolink-documents"
 
-# Create DynamoDB table for flight search cache (CQRS read model)
+# Create DynamoDB table for payment idempotency keys
+# payment-service writes idempotency_key -> payment_id to prevent double-charges
 awslocal dynamodb create-table \
-  --table-name flight-search-cache \
+  --table-name payment-idempotency \
   --attribute-definitions \
-    AttributeName=route,AttributeType=S \
-    AttributeName=departure_date,AttributeType=S \
+    AttributeName=idempotency_key,AttributeType=S \
   --key-schema \
-    AttributeName=route,KeyType=HASH \
-    AttributeName=departure_date,KeyType=RANGE \
+    AttributeName=idempotency_key,KeyType=HASH \
   --billing-mode PAY_PER_REQUEST
 
-echo "Created DynamoDB table: flight-search-cache"
+echo "Created DynamoDB table: payment-idempotency"
 
 # ──────────────────────────────────────────────
 # Lambda Functions
@@ -193,18 +195,17 @@ awslocal lambda create-function \
   --role "$LAMBDA_ROLE_ARN" \
   --zip-file fileb:///tmp/notification_dispatch.zip \
   --timeout 30 \
+  --architectures arm64 \
   --environment "Variables={AWS_DEFAULT_REGION=eu-west-1}"
 
 echo "Created Lambda: notification-dispatch"
 
-# Create SQS event source mapping: aerolink-notifications -> notification-dispatch
-awslocal lambda create-event-source-mapping \
-  --function-name notification-dispatch \
-  --event-source-arn "$NOTIFICATION_QUEUE_ARN" \
-  --batch-size 10 \
-  --enabled
-
-echo "Created SQS -> notification-dispatch event source mapping"
+# NOTE: notification-dispatch Lambda does NOT get an SQS event source mapping.
+# notification-service (port 8008) already polls aerolink-notifications via long-poll,
+# persists to DB, and sends SES email. Adding a Lambda SQS trigger would cause both
+# to compete for the same messages. notification-dispatch exists as a utility Lambda
+# that can be invoked directly for debugging or fallback purposes.
+echo "Skipped SQS->notification-dispatch mapping (notification-service owns queue polling)"
 
 # --- Lambda 2: Boarding Pass Generator (EventBridge-triggered, needs fpdf2) ---
 echo "Packaging boarding_pass_generator Lambda..."
@@ -221,6 +222,7 @@ awslocal lambda create-function \
   --zip-file fileb:///tmp/boarding_pass_generator.zip \
   --timeout 60 \
   --memory-size 256 \
+  --architectures arm64 \
   --environment "Variables={S3_BUCKET=aerolink-documents,AWS_ENDPOINT_URL=http://host.docker.internal:4566,AWS_DEFAULT_REGION=eu-west-1}"
 
 echo "Created Lambda: boarding-pass-generator"
@@ -246,11 +248,11 @@ awslocal lambda add-permission \
 
 echo "Added boarding-pass-generator as target for CheckInCompleted events"
 
-# --- Lambda 3: Pricing Recalculation (scheduled, needs psycopg2-binary) ---
+# --- Lambda 3: Pricing Recalculation (scheduled, uses pg8000 pure-Python driver) ---
 echo "Packaging pricing_recalculation Lambda..."
 cd /tmp && rm -rf lambda_pricing && mkdir lambda_pricing
 cp $LAMBDA_SRC/pricing_recalculation/handler.py lambda_pricing/
-pip install psycopg2-binary -t lambda_pricing/ --quiet 2>/dev/null
+pip install pg8000 -t lambda_pricing/ --quiet 2>/dev/null
 cd lambda_pricing && zip -r /tmp/pricing_recalculation.zip .
 
 awslocal lambda create-function \
@@ -261,6 +263,7 @@ awslocal lambda create-function \
   --zip-file fileb:///tmp/pricing_recalculation.zip \
   --timeout 120 \
   --memory-size 256 \
+  --architectures arm64 \
   --environment "Variables={DB_HOST=postgres,DB_PORT=5432,DB_NAME=aerolink,DB_USER=aerolink,DB_PASSWORD=aerolink,AWS_DEFAULT_REGION=eu-west-1}"
 
 echo "Created Lambda: pricing-recalculation"

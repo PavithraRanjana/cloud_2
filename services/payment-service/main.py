@@ -11,6 +11,8 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
+import boto3
+import structlog
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
@@ -24,6 +26,7 @@ from schemas import PaymentCreate, PaymentResponse, RefundRequest
 
 config = BaseConfig(service_name="payment-service")
 setup_logging(config.service_name)
+logger = structlog.get_logger()
 
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
@@ -37,6 +40,55 @@ try:
     )
 except Exception:
     pass
+
+# DynamoDB client for idempotency key fast-path (pre-check before PostgreSQL hit)
+_dynamo = None
+try:
+    _dynamo = boto3.client(
+        "dynamodb",
+        endpoint_url=config.aws_endpoint_url,
+        region_name=config.aws_region,
+        aws_access_key_id=config.aws_access_key_id,
+        aws_secret_access_key=config.aws_secret_access_key,
+    )
+    _dynamo.describe_table(TableName="payment-idempotency")
+    logger.info("dynamodb_idempotency_connected")
+except Exception as e:
+    logger.warning("dynamodb_idempotency_unavailable", error=str(e))
+    _dynamo = None
+
+
+def _dynamo_check(key: str) -> bool:
+    """Return True if this idempotency key has already been processed."""
+    if not _dynamo:
+        return False
+    try:
+        resp = _dynamo.get_item(
+            TableName="payment-idempotency",
+            Key={"idempotency_key": {"S": key}},
+        )
+        return "Item" in resp
+    except Exception:
+        return False
+
+
+def _dynamo_record(key: str, payment_id: str):
+    """Write idempotency key to DynamoDB with 24-hour TTL."""
+    if not _dynamo:
+        return
+    try:
+        ttl = int(time.time()) + 86400
+        _dynamo.put_item(
+            TableName="payment-idempotency",
+            Item={
+                "idempotency_key": {"S": key},
+                "payment_id": {"S": payment_id},
+                "ttl": {"N": str(ttl)},
+            },
+            ConditionExpression="attribute_not_exists(idempotency_key)",
+        )
+    except Exception:
+        pass
 
 
 async def get_db():
@@ -95,7 +147,15 @@ async def health():
 async def process_payment(data: PaymentCreate, request: Request,
                           current_user: dict = Depends(get_current_user),
                           db: AsyncSession = Depends(get_db)):
-    # Idempotency check - return existing payment if same key
+    # Idempotency fast-path: DynamoDB pre-check (avoids PostgreSQL hit for dupes)
+    if _dynamo_check(data.idempotency_key):
+        existing = await db.execute(
+            select(Payment).where(Payment.idempotency_key == data.idempotency_key))
+        existing_payment = existing.scalar_one_or_none()
+        if existing_payment:
+            return _to_response(existing_payment)
+
+    # Idempotency check via PostgreSQL (authoritative)
     existing = await db.execute(
         select(Payment).where(Payment.idempotency_key == data.idempotency_key))
     existing_payment = existing.scalar_one_or_none()
@@ -104,6 +164,7 @@ async def process_payment(data: PaymentCreate, request: Request,
                            resource_id=str(existing_payment.id),
                            actor_id=current_user["sub"], actor_role=current_user.get("role"),
                            detail=f"Idempotency key reused: {data.idempotency_key}")
+        _dynamo_record(data.idempotency_key, str(existing_payment.id))
         return _to_response(existing_payment)
 
     # PCI-DSS: Tokenize card number; CVV validated in schema but NEVER stored
@@ -161,6 +222,8 @@ async def process_payment(data: PaymentCreate, request: Request,
     if success:
         payment.status = PaymentStatus.COMPLETED
         payment.transaction_ref = result
+        # Record in DynamoDB so future duplicate requests hit the fast-path
+        _dynamo_record(data.idempotency_key, str(payment.id))
 
         # Audit: payment succeeded
         await record_audit(db, "payment-service", "payment.completed", "payment",

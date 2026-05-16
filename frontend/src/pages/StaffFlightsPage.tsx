@@ -359,9 +359,18 @@ export function StaffFlightsPage() {
   const { user } = useAuth();
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [filterOrigin, setFilterOrigin] = useState("");
-  const [filterDest,   setFilterDest]   = useState("");
+  const [search,        setSearch]        = useState("");
+  const [filterOrigin,  setFilterOrigin]  = useState("");
+  const [filterDest,    setFilterDest]    = useState("");
+  const [filterStatus,  setFilterStatus]  = useState("");
+  const [filterAirline, setFilterAirline] = useState("");
+  const [filterAcraft,  setFilterAcraft]  = useState("");
+  const [filterDateFrom,setFilterDateFrom]= useState("");
+  const [filterDateTo,  setFilterDateTo]  = useState("");
+  const [airlineQuery,  setAirlineQuery]  = useState("");
+  const [airlineOpen,   setAirlineOpen]   = useState(false);
+  const [acraftQuery,   setAcraftQuery]   = useState("");
+  const [acraftOpen,    setAcraftOpen]    = useState(false);
 
   const isStaff = ["admin", "airline-staff"].includes(user?.role ?? "");
 
@@ -387,15 +396,34 @@ export function StaffFlightsPage() {
     );
   }
 
-  const flights = (data?.items ?? []).filter(f => {
-    if (filterOrigin && f.origin !== filterOrigin) return false;
-    if (filterDest   && f.destination !== filterDest) return false;
+  const allItems = data?.items ?? [];
+  const uniqueAirlines = [...new Set(allItems.map(f => f.airline))].sort();
+  const uniqueAcraft   = [...new Set(allItems.map(f => f.aircraft_type).filter(Boolean) as string[])].sort();
+  const filteredAirlines = uniqueAirlines.filter(a => a.toLowerCase().includes(airlineQuery.toLowerCase()));
+  const filteredAcraft   = uniqueAcraft.filter(a => a.toLowerCase().includes(acraftQuery.toLowerCase()));
+
+  const hasFilters = !!(search || filterOrigin || filterDest || filterStatus || filterAirline || filterAcraft || filterDateFrom || filterDateTo);
+
+  function clearFilters() {
+    setSearch(""); setFilterOrigin(""); setFilterDest(""); setFilterStatus("");
+    setFilterAirline(""); setAirlineQuery(""); setFilterAcraft(""); setAcraftQuery("");
+    setFilterDateFrom(""); setFilterDateTo("");
+  }
+
+  const flights = allItems.filter(f => {
+    if (filterOrigin  && f.origin      !== filterOrigin)  return false;
+    if (filterDest    && f.destination !== filterDest)    return false;
+    if (filterStatus  && f.status      !== filterStatus)  return false;
+    if (filterAirline && f.airline     !== filterAirline) return false;
+    if (filterAcraft  && f.aircraft_type !== filterAcraft) return false;
+    if (filterDateFrom && f.departure_date < filterDateFrom) return false;
+    if (filterDateTo   && f.departure_date > filterDateTo)   return false;
     if (!search) return true;
     const q = search.toLowerCase();
     const originInfo = AIRPORTS[f.origin];
     const destInfo   = AIRPORTS[f.destination];
     return [
-      f.flight_number, f.origin, f.destination, f.airline,
+      f.flight_number, f.origin, f.destination, f.airline, f.aircraft_type,
       originInfo?.city, originInfo?.country,
       destInfo?.city,   destInfo?.country,
     ].some(v => v?.toLowerCase().includes(q));
@@ -418,28 +446,98 @@ export function StaffFlightsPage() {
 
       {showCreate && <CreatePanel onClose={() => setShowCreate(false)} />}
 
-      <div className="flex flex-wrap gap-3">
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by flight number, airline, city…"
-          className="flex-1 min-w-[200px] rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-        />
-        <div className="w-56">
-          <AirportCombobox
-            value={filterOrigin}
-            onChange={setFilterOrigin}
-            placeholder="Filter by origin…"
-            exclude={filterDest}
+      <div className="space-y-2">
+        {/* Row 1: text search + airport filters */}
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search by flight number, airline, city…"
+            className="flex-1 min-w-[200px] rounded-xl border border-gray-200 px-4 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
+          <div className="w-52">
+            <AirportCombobox value={filterOrigin} onChange={setFilterOrigin} placeholder="Origin…" exclude={filterDest} />
+          </div>
+          <div className="w-52">
+            <AirportCombobox value={filterDest} onChange={setFilterDest} placeholder="Destination…" exclude={filterOrigin} />
+          </div>
         </div>
-        <div className="w-56">
-          <AirportCombobox
-            value={filterDest}
-            onChange={setFilterDest}
-            placeholder="Filter by destination…"
-            exclude={filterOrigin}
-          />
+
+        {/* Row 2: status, airline, aircraft, date range */}
+        <div className="flex flex-wrap gap-2 items-start">
+
+          {/* Status */}
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="h-9 rounded-xl border border-gray-200 px-3 text-sm bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-600"
+          >
+            <option value="">All statuses</option>
+            {STATUSES.map(s => <option key={s} value={s} className="capitalize">{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+          </select>
+
+          {/* Airline searchable combobox */}
+          <div className="relative w-52">
+            <input
+              type="text"
+              value={airlineQuery || filterAirline}
+              placeholder="Filter by airline…"
+              onChange={e => { setAirlineQuery(e.target.value); setFilterAirline(""); setAirlineOpen(true); }}
+              onFocus={() => { setAirlineQuery(""); setAirlineOpen(true); }}
+              onBlur={() => setTimeout(() => setAirlineOpen(false), 150)}
+              className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {airlineOpen && filteredAirlines.length > 0 && (
+              <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+                <li onMouseDown={() => { setFilterAirline(""); setAirlineQuery(""); setAirlineOpen(false); }}
+                  className="cursor-pointer px-3 py-2 text-gray-400 hover:bg-blue-50">All airlines</li>
+                {filteredAirlines.map(a => (
+                  <li key={a} onMouseDown={() => { setFilterAirline(a); setAirlineQuery(a); setAirlineOpen(false); }}
+                    className={`cursor-pointer px-3 py-2 hover:bg-blue-50 text-gray-700 ${filterAirline === a ? "bg-blue-50 font-medium" : ""}`}>{a}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Aircraft type searchable combobox */}
+          <div className="relative w-48">
+            <input
+              type="text"
+              value={acraftQuery || filterAcraft}
+              placeholder="Aircraft type…"
+              onChange={e => { setAcraftQuery(e.target.value); setFilterAcraft(""); setAcraftOpen(true); }}
+              onFocus={() => { setAcraftQuery(""); setAcraftOpen(true); }}
+              onBlur={() => setTimeout(() => setAcraftOpen(false), 150)}
+              className="w-full h-9 rounded-xl border border-gray-200 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+            {acraftOpen && filteredAcraft.length > 0 && (
+              <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+                <li onMouseDown={() => { setFilterAcraft(""); setAcraftQuery(""); setAcraftOpen(false); }}
+                  className="cursor-pointer px-3 py-2 text-gray-400 hover:bg-blue-50">All aircraft</li>
+                {filteredAcraft.map(a => (
+                  <li key={a} onMouseDown={() => { setFilterAcraft(a); setAcraftQuery(a); setAcraftOpen(false); }}
+                    className={`cursor-pointer px-3 py-2 hover:bg-blue-50 text-gray-700 ${filterAcraft === a ? "bg-blue-50 font-medium" : ""}`}>{a}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Date range */}
+          <div className="flex items-center gap-1">
+            <input type="date" value={filterDateFrom} onChange={e => setFilterDateFrom(e.target.value)}
+              className="h-9 rounded-xl border border-gray-200 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-600" />
+            <span className="text-gray-400 text-xs">to</span>
+            <input type="date" value={filterDateTo} onChange={e => setFilterDateTo(e.target.value)}
+              className="h-9 rounded-xl border border-gray-200 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-600" />
+          </div>
+
+          {/* Clear all */}
+          {hasFilters && (
+            <button onClick={clearFilters}
+              className="h-9 rounded-xl border border-gray-200 px-3 text-sm text-gray-500 hover:bg-gray-50 transition-colors shrink-0">
+              Clear all
+            </button>
+          )}
         </div>
       </div>
 
@@ -448,8 +546,12 @@ export function StaffFlightsPage() {
 
       {!isLoading && flights.length === 0 && (
         <div className="rounded-2xl border border-dashed border-gray-200 bg-white px-8 py-14 text-center">
-          <p className="font-semibold text-gray-500">{search ? "No flights match your search" : "No flights in the schedule"}</p>
-          <p className="mt-1 text-sm text-gray-400">{!search && "Click \"+ New Flight\" to add one."}</p>
+          <p className="font-semibold text-gray-500">{hasFilters ? "No flights match your filters" : "No flights in the schedule"}</p>
+          <p className="mt-1 text-sm text-gray-400">
+            {hasFilters
+              ? <button onClick={clearFilters} className="text-blue-500 hover:underline">Clear filters</button>
+              : "Click \"+ New Flight\" to add one."}
+          </p>
         </div>
       )}
 

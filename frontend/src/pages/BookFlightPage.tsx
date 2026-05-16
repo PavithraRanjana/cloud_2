@@ -303,6 +303,8 @@ export function BookFlightPage() {
   });
   const [natQuery,  setNatQuery]  = useState("");
   const [natOpen,   setNatOpen]   = useState(false);
+  const [ccQuery,   setCcQuery]   = useState("");
+  const [ccOpen,    setCcOpen]    = useState(false);
 
   // Contact details
   const [contact, setContact] = useState({
@@ -371,6 +373,11 @@ export function BookFlightPage() {
   const filteredNationalities = NATIONALITIES.filter((n) =>
     n.toLowerCase().includes(natQuery.toLowerCase())
   ).slice(0, 20);
+
+  const filteredCountryCodes = COUNTRY_CODES.filter((cc) =>
+    cc.label.toLowerCase().includes(ccQuery.toLowerCase()) ||
+    cc.dial.includes(ccQuery)
+  );
 
   // ── Validation ───────────────────────────────────────────────────────────
   function validatePassenger(): boolean {
@@ -919,13 +926,34 @@ export function BookFlightPage() {
 
                 <Field label="Mobile Number" required error={errors.phone_number}>
                   <div className="flex gap-2">
-                    <select value={contact.country_code}
-                      onChange={(e) => setContact(c => ({ ...c, country_code: e.target.value }))}
-                      className="w-48 shrink-0 h-9 rounded-lg border border-gray-300 px-2 text-sm bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500">
-                      {COUNTRY_CODES.map((cc) => (
-                        <option key={cc.dial} value={cc.dial}>{cc.label}</option>
-                      ))}
-                    </select>
+                    <div className="relative w-48 shrink-0">
+                      <input
+                        type="text"
+                        value={ccQuery || contact.country_code}
+                        placeholder="Search code…"
+                        onChange={(e) => {
+                          setCcQuery(e.target.value);
+                          setContact(c => ({ ...c, country_code: "" }));
+                          setCcOpen(true);
+                        }}
+                        onFocus={() => { setCcQuery(""); setCcOpen(true); }}
+                        onBlur={() => setTimeout(() => setCcOpen(false), 150)}
+                        className="w-full h-9 rounded-lg border border-gray-300 px-2 text-sm bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
+                      {ccOpen && filteredCountryCodes.length > 0 && (
+                        <ul className="absolute z-50 mt-1 max-h-48 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+                          {filteredCountryCodes.map((cc) => (
+                            <li key={cc.dial}
+                              onMouseDown={() => {
+                                setContact(c => ({ ...c, country_code: cc.dial }));
+                                setCcQuery(cc.dial);
+                                setCcOpen(false);
+                              }}
+                              className="cursor-pointer px-3 py-2 hover:bg-blue-50 text-gray-700">{cc.label}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                     <input type="tel" value={contact.phone_number}
                       onChange={(e) => setContact(c => ({ ...c, phone_number: e.target.value }))}
                       className={`flex-1 ${errors.phone_number ? INPUT_ERR : INPUT}`}

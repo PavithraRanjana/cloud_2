@@ -18,7 +18,7 @@ from sqlalchemy import text
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
-from shared.events import EventPublisher
+from shared.events import EventPublisher, _boto3_kwargs as _aws_kwargs
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.resilience import create_circuit_breaker, async_retry
 from shared.logging import setup_logging
@@ -36,10 +36,8 @@ _s3 = None
 try:
     _s3 = boto3.client(
         "s3",
-        endpoint_url=config.aws_endpoint_url,
-        region_name=config.aws_region,
-        aws_access_key_id=config.aws_access_key_id,
-        aws_secret_access_key=config.aws_secret_access_key,
+        **_aws_kwargs(config.aws_endpoint_url, config.aws_region,
+                      config.aws_access_key_id, config.aws_secret_access_key),
     )
 except Exception:
     pass

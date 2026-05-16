@@ -47,16 +47,23 @@ START_TIME = time.time()
 SES_SENDER_EMAIL  = os.environ.get("SES_SENDER_EMAIL", "noreply@aerolink.com")
 ENABLE_SQS_POLLING = os.environ.get("ENABLE_SQS_POLLING", "false").lower() == "true"
 
-MAIN_QUEUE_URL = f"{config.aws_endpoint_url}/000000000000/aerolink-notifications"
-DLQ_URL        = f"{config.aws_endpoint_url}/000000000000/aerolink-notifications-dlq"
-
-_sqs = boto3.client(
-    "sqs",
-    endpoint_url=config.aws_endpoint_url,
-    region_name=config.aws_region,
-    aws_access_key_id=config.aws_access_key_id,
-    aws_secret_access_key=config.aws_secret_access_key,
+# In production these are injected from the CloudFormation stack outputs (real SQS URLs).
+# Fall back to the LocalStack pattern for local dev.
+_localstack_base = config.aws_endpoint_url or "http://localhost:4566"
+MAIN_QUEUE_URL = os.environ.get(
+    "SQS_QUEUE_URL",
+    f"{_localstack_base}/000000000000/aerolink-notifications",
 )
+DLQ_URL = os.environ.get(
+    "SQS_DLQ_URL",
+    f"{_localstack_base}/000000000000/aerolink-notifications-dlq",
+)
+
+from shared.events import _boto3_kwargs as _aws_kwargs
+_sqs = boto3.client("sqs", **_aws_kwargs(
+    config.aws_endpoint_url, config.aws_region,
+    config.aws_access_key_id, config.aws_secret_access_key,
+))
 
 TEMPLATES = {
     "BookingCreated": {
@@ -98,10 +105,8 @@ class SESEmailSender:
     def __init__(self):
         self.client = boto3.client(
             "ses",
-            endpoint_url=config.aws_endpoint_url,
-            region_name=config.aws_region,
-            aws_access_key_id=config.aws_access_key_id,
-            aws_secret_access_key=config.aws_secret_access_key,
+            **_aws_kwargs(config.aws_endpoint_url, config.aws_region,
+                          config.aws_access_key_id, config.aws_secret_access_key),
         )
         self.sender = SES_SENDER_EMAIL
 
@@ -250,7 +255,9 @@ def poll_events():
         consumer = EventConsumer(
             endpoint_url=config.aws_endpoint_url,
             region=config.aws_region,
-            queue_url=f"{config.aws_endpoint_url}/000000000000/aerolink-notifications",
+            queue_url=MAIN_QUEUE_URL,
+            aws_access_key_id=config.aws_access_key_id,
+            aws_secret_access_key=config.aws_secret_access_key,
         )
     except Exception as e:
         logger.error("failed_to_create_consumer", error=str(e))

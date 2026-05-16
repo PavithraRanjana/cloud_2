@@ -19,10 +19,13 @@ class BaseConfig(BaseSettings):
     refresh_token_expire_days: int = 7
 
     # AWS / LocalStack
+    # In production (ECS) leave these unset — boto3 uses the ECS task IAM role automatically.
+    # Set aws_endpoint_url=http://localhost:4566, aws_access_key_id=test,
+    # aws_secret_access_key=test in .env to target LocalStack.
     aws_region: str = "eu-west-1"
-    aws_endpoint_url: str = "http://localhost:4566"
-    aws_access_key_id: str = "test"
-    aws_secret_access_key: str = "test"
+    aws_endpoint_url: str = ""
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
     localstack_auth_token: str = ""
 
     # EventBridge

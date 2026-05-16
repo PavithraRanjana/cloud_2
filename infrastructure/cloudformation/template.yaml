@@ -249,11 +249,6 @@ Resources:
     Properties:
       GroupDescription: API Gateway VPC Link - egress to internal ALB on port 80
       VpcId: !Ref VPC
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          DestinationSecurityGroupId: !Ref ALBSecurityGroup
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-vpclink-sg'
@@ -263,14 +258,28 @@ Resources:
     Properties:
       GroupDescription: Internal ALB - allows HTTP from API Gateway VPC Link
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          SourceSecurityGroupId: !Ref VpcLinkSecurityGroup
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-alb-sg'
+
+  # Cross-SG rules added as separate resources to avoid circular dependency
+  VpcLinkToALBEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref VpcLinkSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      DestinationSecurityGroupId: !Ref ALBSecurityGroup
+
+  ALBFromVpcLinkIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref VpcLinkSecurityGroup
 
   ECSSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -837,13 +846,7 @@ Resources:
         ThrottlingRateLimit: 500
       AccessLogSettings:
         DestinationArn: !GetAtt HttpApiLogGroup.Arn
-        Format: >-
-          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp",
-          "requestTime":"$context.requestTime","httpMethod":"$context.httpMethod",
-          "routeKey":"$context.routeKey","status":"$context.status",
-          "responseLength":"$context.responseLength",
-          "integrationLatency":"$context.integrationLatency",
-          "errorMessage":"$context.error.message"}
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","requestTime":"$context.requestTime","httpMethod":"$context.httpMethod","routeKey":"$context.routeKey","status":"$context.status","responseLength":"$context.responseLength","integrationLatency":"$context.integrationLatency","errorMessage":"$context.error.message"}'
 
   # ============================================================
   # ECS Cluster
@@ -1081,6 +1084,8 @@ Resources:
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/3'
             - Name: BOOKING_SERVICE_URL
               Value: http://booking-service.aerolink.local:8003
+            - Name: PASSENGER_SERVICE_URL
+              Value: http://passenger-service.aerolink.local:8007
             - Name: JWT_SECRET
               Value: !Ref JWTSecret
             - Name: AWS_REGION
@@ -1262,7 +1267,13 @@ Resources:
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
             - Name: ENABLE_SQS_POLLING
-              Value: 'false'
+              Value: 'true'
+            - Name: SQS_QUEUE_URL
+              Value: !Ref NotificationsQueue
+            - Name: SQS_DLQ_URL
+              Value: !Ref NotificationsDLQ
+            - Name: SES_SENDER_EMAIL
+              Value: noreply@aerolink.com
           LogConfiguration:
             LogDriver: awslogs
             Options:

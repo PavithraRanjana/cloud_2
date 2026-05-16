@@ -7,16 +7,26 @@ from typing import Any
 logger = structlog.get_logger()
 
 
+def _boto3_kwargs(endpoint_url: str, region: str,
+                  aws_access_key_id: str = "", aws_secret_access_key: str = "") -> dict:
+    """Build boto3 client kwargs. Credentials and endpoint are only passed when
+    targeting LocalStack (endpoint_url is set); in production the ECS task IAM
+    role is used automatically via the standard credential chain."""
+    kwargs: dict = {"region_name": region}
+    if endpoint_url:
+        kwargs["endpoint_url"] = endpoint_url
+        kwargs["aws_access_key_id"] = aws_access_key_id
+        kwargs["aws_secret_access_key"] = aws_secret_access_key
+    return kwargs
+
+
 class EventPublisher:
     def __init__(self, endpoint_url: str, region: str, bus_name: str,
-                 aws_access_key_id: str = "test", aws_secret_access_key: str = "test"):
+                 aws_access_key_id: str = "", aws_secret_access_key: str = ""):
         self.bus_name = bus_name
         self.client = boto3.client(
             "events",
-            endpoint_url=endpoint_url,
-            region_name=region,
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
+            **_boto3_kwargs(endpoint_url, region, aws_access_key_id, aws_secret_access_key),
         )
 
     def publish(self, source: str, detail_type: str, detail: dict[str, Any]) -> dict:
@@ -41,14 +51,11 @@ class EventConsumer:
     """Polls SQS queue that is subscribed to EventBridge rules."""
 
     def __init__(self, endpoint_url: str, region: str, queue_url: str,
-                 aws_access_key_id: str = "test", aws_secret_access_key: str = "test"):
+                 aws_access_key_id: str = "", aws_secret_access_key: str = ""):
         self.queue_url = queue_url
         self.client = boto3.client(
             "sqs",
-            endpoint_url=endpoint_url,
-            region_name=region,
-            aws_access_key_id=aws_access_key_id,
-            aws_secret_access_key=aws_secret_access_key,
+            **_boto3_kwargs(endpoint_url, region, aws_access_key_id, aws_secret_access_key),
         )
 
     def poll(self, max_messages: int = 10, wait_seconds: int = 5) -> list[dict]:

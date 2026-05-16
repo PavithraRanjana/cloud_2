@@ -17,7 +17,7 @@ import structlog
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
-from shared.events import EventPublisher
+from shared.events import EventPublisher, _boto3_kwargs as _aws_kwargs
 from shared.encryption import tokenize_card, mask_card_number
 from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_set_nx, redis_get_json, redis_set_json
@@ -55,10 +55,8 @@ _dynamo = None
 try:
     _dynamo = boto3.client(
         "dynamodb",
-        endpoint_url=config.aws_endpoint_url,
-        region_name=config.aws_region,
-        aws_access_key_id=config.aws_access_key_id,
-        aws_secret_access_key=config.aws_secret_access_key,
+        **_aws_kwargs(config.aws_endpoint_url, config.aws_region,
+                      config.aws_access_key_id, config.aws_secret_access_key),
     )
     _dynamo.describe_table(TableName="payment-idempotency")
     logger.info("dynamodb_idempotency_connected")

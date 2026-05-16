@@ -101,6 +101,30 @@ Parameters:
     MinLength: 16
     Description: Shared secret used for service-to-service calls (e.g. loyalty/award)
 
+  GoogleClientId:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth 2.0 client ID for Cognito social login
+
+  GoogleClientSecret:
+    Type: String
+    NoEcho: true
+    Description: Google OAuth 2.0 client secret for Cognito social login
+
+  CognitoDomainPrefix:
+    Type: String
+    Description: Unique prefix for the Cognito hosted UI domain (e.g. aerolink-prod)
+
+  FrontendCallbackUrl:
+    Type: String
+    Default: 'https://app.aerolink.com/callback'
+    Description: OAuth redirect URI registered with Cognito after login
+
+  FrontendLogoutUrl:
+    Type: String
+    Default: 'https://app.aerolink.com'
+    Description: URL to redirect to after Cognito logout
+
 Resources:
 
   # ============================================================
@@ -834,12 +858,171 @@ Resources:
       PayloadFormatVersion: '1.0'
       TimeoutInMillis: 29000
 
+  # ============================================================
+  # Amazon Cognito — User Pool, Social Login, Groups
+  # ============================================================
+
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${EnvironmentName}-aerolink-user-pool'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      MfaConfiguration: 'OFF'
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      UserPoolTags:
+        Project: AeroLink
+        Environment: !Ref EnvironmentName
+
+  CognitoUserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref CognitoUserPool
+
+  GoogleIdentityProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Ref GoogleClientId
+        client_secret: !Ref GoogleClientSecret
+        authorize_scopes: openid email profile
+      AttributeMapping:
+        email: email
+        name: name
+        username: sub
+
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    DependsOn: GoogleIdentityProvider
+    Properties:
+      ClientName: !Sub '${EnvironmentName}-aerolink-web-client'
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      AllowedOAuthFlowsUserPoolClient: true
+      CallbackURLs:
+        - !Ref FrontendCallbackUrl
+      LogoutURLs:
+        - !Ref FrontendLogoutUrl
+      SupportedIdentityProviders:
+        - COGNITO
+        - Google
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+
+  # ---- Cognito Groups for RBAC ----
+  CognitoGroupPassenger:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: passenger
+      Description: Standard passenger users
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 50
+
+  CognitoGroupAdmin:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: admin
+      Description: AeroLink system administrators
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 10
+
+  CognitoGroupAirlineStaff:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: airline-staff
+      Description: Airline staff with operational access
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 20
+
+  CognitoGroupAirportOperator:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: airport-operator
+      Description: Airport ground operators
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 30
+
+  CognitoGroupPartnerApi:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: partner-api
+      Description: Third-party partner API consumers
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 40
+
+  # ---- API Gateway JWT Authorizer backed by Cognito ----
+  CognitoJwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      Name: CognitoJwtAuthorizer
+      AuthorizerType: JWT
+      IdentitySource:
+        - '$request.header.Authorization'
+      JwtConfiguration:
+        Issuer: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+        Audience:
+          - !Ref CognitoUserPoolClient
+
+  # Health check route — unauthenticated so load balancers can probe it
+  HttpApiHealthRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'GET /health'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
   HttpApiDefaultRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref AeroLinkHttpApi
       RouteKey: '$default'
       Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
 
   HttpApiDefaultStage:
     Type: AWS::ApiGatewayV2::Stage
@@ -914,6 +1097,10 @@ Resources:
               Value: http://notification-service.aerolink.local:8008
             - Name: JWT_SECRET
               Value: !Ref JWTSecret
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -958,6 +1145,10 @@ Resources:
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1002,6 +1193,10 @@ Resources:
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1050,6 +1245,10 @@ Resources:
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1100,6 +1299,10 @@ Resources:
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1144,6 +1347,10 @@ Resources:
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1194,6 +1401,10 @@ Resources:
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
               Value: aerolink-events
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1240,6 +1451,12 @@ Resources:
               Value: !Ref InternalApiKey
             - Name: JWT_SECRET
               Value: !Ref JWTSecret
+            - Name: AWS_REGION
+              Value: !Ref 'AWS::Region'
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1292,6 +1509,10 @@ Resources:
               Value: !Ref NotificationsDLQ
             - Name: SES_SENDER_EMAIL
               Value: noreply@aerolink.com
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_CLIENT_ID
+              Value: !Ref CognitoUserPoolClient
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1897,3 +2118,25 @@ Outputs:
   ServiceDiscoveryNamespaceName:
     Description: Cloud Map namespace DNS name
     Value: aerolink.local
+
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID — set as COGNITO_USER_POOL_ID in services
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub '${EnvironmentName}-CognitoUserPoolId'
+
+  CognitoUserPoolClientId:
+    Description: Cognito App Client ID — set as COGNITO_CLIENT_ID in services
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub '${EnvironmentName}-CognitoUserPoolClientId'
+
+  CognitoHostedUIUrl:
+    Description: Cognito Hosted UI base URL for OAuth login/logout flows
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'
+    Export:
+      Name: !Sub '${EnvironmentName}-CognitoHostedUIUrl'
+
+  CognitoIssuerUrl:
+    Description: Cognito token issuer URL (used for JWKS discovery)
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'

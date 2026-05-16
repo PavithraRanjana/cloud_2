@@ -18,6 +18,10 @@ class BaseConfig(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # Amazon Cognito (production) — empty strings = local dev HS256 fallback mode
+    cognito_user_pool_id: str = ""
+    cognito_client_id: str = ""
+
     # AWS / LocalStack
     # In production (ECS) leave these unset — boto3 uses the ECS task IAM role automatically.
     # Set aws_endpoint_url=http://localhost:4566, aws_access_key_id=test,

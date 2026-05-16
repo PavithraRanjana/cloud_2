@@ -138,6 +138,19 @@ awslocal events put-targets \
 
 echo "Created rule: PaymentRefunded -> notifications"
 
+# Rule 9: FlightScheduleUpdated -> notification queue
+awslocal events put-rule \
+  --name flight-schedule-updated-to-notifications \
+  --event-bus-name aerolink-events \
+  --event-pattern '{"source":["flight-service"],"detail-type":["FlightScheduleUpdated"]}'
+
+awslocal events put-targets \
+  --rule flight-schedule-updated-to-notifications \
+  --event-bus-name aerolink-events \
+  --targets "Id=notification-queue,Arn=$NOTIFICATION_QUEUE_ARN"
+
+echo "Created rule: FlightScheduleUpdated -> notifications"
+
 # Create S3 bucket for boarding passes / documents
 awslocal s3 mb s3://aerolink-documents
 echo "Created S3 bucket: aerolink-documents"

@@ -233,6 +233,20 @@ function BookingRow({
     }
   }
 
+  async function downloadPdfBoardingPass() {
+    try {
+      const token = localStorage.getItem("access_token");
+      const res = await fetch(`/api/v1/checkin/${booking.id}/boarding-pass/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return; // PDF not ready yet — Lambda may still be processing
+      const { url } = await res.json();
+      window.open(url, "_blank");
+    } catch {
+      // silently fail
+    }
+  }
+
   const checkIn = useMutation({
     mutationFn: async () => {
       const { data, error } = await (checkinClient as any).POST("/api/v1/checkin", {
@@ -321,7 +335,7 @@ function BookingRow({
               <button
                 onClick={openBoardingPass}
                 disabled={downloading}
-                title="Download boarding pass as PDF"
+                title="View boarding pass (HTML)"
                 className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sky-700 hover:bg-sky-100 disabled:opacity-50 transition-colors"
               >
                 {downloading ? (
@@ -333,6 +347,13 @@ function BookingRow({
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
                 )}
+              </button>
+              <button
+                onClick={downloadPdfBoardingPass}
+                title="Download PDF boarding pass (from S3)"
+                className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-600 hover:bg-red-100 transition-colors text-xs font-semibold"
+              >
+                PDF
               </button>
             </div>
           ) : isEligible ? (

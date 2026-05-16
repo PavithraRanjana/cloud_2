@@ -232,6 +232,24 @@ async def process_payment(data: PaymentCreate, request: Request,
                            detail=f"TXN: {result}, Amount: {data.amount} {data.currency}",
                            ip_address=client_ip)
 
+        # Fetch booking details for accurate event payload (booking_reference + passenger_name)
+        booking_reference = data.booking_id  # fallback
+        passenger_name    = current_user.get("full_name") or current_user.get("username", "")
+        passenger_email   = current_user.get("email", "")
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                br = await client.get(
+                    f"{config.booking_service_url}/api/v1/bookings/{data.booking_id}",
+                    headers={"Authorization": f"Bearer {current_user.get('_token', '')}"},
+                )
+                if br.status_code == 200:
+                    bdata = br.json()
+                    booking_reference = bdata.get("booking_reference", booking_reference)
+                    passenger_name    = bdata.get("passenger_name") or passenger_name
+                    passenger_email   = bdata.get("passenger_email") or passenger_email
+        except Exception:
+            pass
+
         # Update booking status via saga
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -258,12 +276,12 @@ async def process_payment(data: PaymentCreate, request: Request,
                 event_publisher.publish("payment-service", "PaymentCompleted", {
                     "payment_id": str(payment.id),
                     "booking_id": data.booking_id,
-                    "booking_reference": data.booking_id,
+                    "booking_reference": booking_reference,
                     "amount": data.amount,
                     "currency": data.currency,
                     "transaction_ref": result,
-                    "passenger_email": current_user.get("email", ""),
-                    "passenger_name": current_user.get("username", ""),
+                    "passenger_email": passenger_email,
+                    "passenger_name": passenger_name,
                     "loyalty_points_awarded": loyalty_points,
                 })
             except Exception:

@@ -71,6 +71,10 @@ TEMPLATES = {
         "subject": "Refund Processed – ${amount}",
         "body": "Hi {passenger_name},\n\nA refund of ${amount} {currency} has been processed for booking {booking_id}.\n\nPlease allow 5-7 business days for the funds to appear in your account.\n\nAeroLink",
     },
+    "FlightScheduleUpdated": {
+        "subject": "Flight Schedule Update – {flight_number}",
+        "body": "Hi there,\n\nFlight {flight_number} has been updated (action: {action}).\n\nPlease check the AeroLink app for the latest schedule information.\n\nAeroLink",
+    },
 }
 
 

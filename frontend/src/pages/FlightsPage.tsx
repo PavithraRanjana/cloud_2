@@ -160,7 +160,7 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
           <div className="flex-1 text-center">
             <p className="text-3xl font-bold text-gray-900 tabular-nums">{formatTime(flight.arrival_time)}</p>
             <p className="mt-0.5 font-semibold text-gray-800">{cityLabel(flight.destination)}</p>
-            <p className="text-xs font-mono text-violet-400">{flight.destination}</p>
+            <p className="text-xs font-mono text-blue-500">{flight.destination}</p>
             <p className="mt-1 text-xs text-gray-400">{formatDate(flight.arrival_date)}</p>
           </div>
         </div>

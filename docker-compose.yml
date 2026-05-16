@@ -40,6 +40,8 @@ services:
       - AWS_DEFAULT_REGION=eu-west-1
       - LAMBDA_DOCKER_NETWORK=cloud_2_default
       - LOCALSTACK_HOSTNAME=localstack
+      - EXTRA_CORS_ALLOWED_HEADERS=X-Amz-Target,X-Amz-Date,X-Amz-Security-Token
+      - EXTRA_CORS_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
     volumes:
       - "./infrastructure/localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
       - "./infrastructure/localstack:/etc/localstack/init/localstack-config"

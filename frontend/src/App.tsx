@@ -6,6 +6,7 @@ import { Layout } from "./components/Layout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { CallbackPage } from "./pages/CallbackPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { FlightsPage } from "./pages/FlightsPage";
 import { BookingsPage } from "./pages/BookingsPage";
@@ -29,6 +30,7 @@ export default function App() {
           <Routes>
             <Route path="/login"    element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/callback" element={<CallbackPage />} />
             <Route element={<ProtectedRoute />}>
               <Route element={<Layout />}>
                 <Route index         element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />

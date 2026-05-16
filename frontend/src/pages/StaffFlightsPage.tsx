@@ -360,6 +360,8 @@ export function StaffFlightsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [filterOrigin, setFilterOrigin] = useState("");
+  const [filterDest,   setFilterDest]   = useState("");
 
   const isStaff = ["admin", "airline-staff"].includes(user?.role ?? "");
 
@@ -386,6 +388,8 @@ export function StaffFlightsPage() {
   }
 
   const flights = (data?.items ?? []).filter(f => {
+    if (filterOrigin && f.origin !== filterOrigin) return false;
+    if (filterDest   && f.destination !== filterDest) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     const originInfo = AIRPORTS[f.origin];
@@ -414,12 +418,30 @@ export function StaffFlightsPage() {
 
       {showCreate && <CreatePanel onClose={() => setShowCreate(false)} />}
 
-      <input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search by flight number, origin, destination or airline…"
-        className="w-full rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-      />
+      <div className="flex flex-wrap gap-3">
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by flight number, airline, city…"
+          className="flex-1 min-w-[200px] rounded-xl border border-gray-200 px-4 py-2.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        <div className="w-56">
+          <AirportCombobox
+            value={filterOrigin}
+            onChange={setFilterOrigin}
+            placeholder="Filter by origin…"
+            exclude={filterDest}
+          />
+        </div>
+        <div className="w-56">
+          <AirportCombobox
+            value={filterDest}
+            onChange={setFilterDest}
+            placeholder="Filter by destination…"
+            exclude={filterOrigin}
+          />
+        </div>
+      </div>
 
       {isLoading && <p className="text-sm text-gray-400 animate-pulse">Loading flights…</p>}
       {isError   && <p className="text-sm text-red-500">Failed to load flights.</p>}

@@ -168,6 +168,69 @@ awslocal dynamodb create-table \
 echo "Created DynamoDB table: payment-idempotency"
 
 # ──────────────────────────────────────────────
+# Cognito User Pool (LocalStack Pro)
+# ──────────────────────────────────────────────
+
+echo ""
+echo "=== Setting up Cognito User Pool ==="
+
+POOL_ID=$(awslocal cognito-idp create-user-pool \
+  --pool-name aerolink-local \
+  --policies '{"PasswordPolicy":{"MinimumLength":8,"RequireUppercase":false,"RequireLowercase":false,"RequireNumbers":false,"RequireSymbols":false}}' \
+  --auto-verified-attributes email \
+  --query 'UserPool.Id' --output text)
+
+echo "Created Cognito User Pool: $POOL_ID"
+
+CLIENT_ID=$(awslocal cognito-idp create-user-pool-client \
+  --user-pool-id "$POOL_ID" \
+  --client-name aerolink-local-client \
+  --no-generate-secret \
+  --explicit-auth-flows ALLOW_USER_PASSWORD_AUTH ALLOW_REFRESH_TOKEN_AUTH ALLOW_USER_SRP_AUTH \
+  --query 'UserPoolClient.ClientId' --output text)
+
+echo "Created Cognito App Client: $CLIENT_ID"
+
+# Create RBAC groups (same as production CloudFormation)
+for GROUP in passenger admin airline-staff airport-operator partner-api; do
+  awslocal cognito-idp create-group \
+    --group-name "$GROUP" \
+    --user-pool-id "$POOL_ID"
+  echo "Created group: $GROUP"
+done
+
+# Create one test user per role (password: Test1234!)
+for ROLE in passenger admin airline-staff airport-operator; do
+  USERNAME="test-$ROLE"
+  awslocal cognito-idp admin-create-user \
+    --user-pool-id "$POOL_ID" \
+    --username "$USERNAME" \
+    --user-attributes Name=email,Value="${USERNAME}@aerolink.test" Name=email_verified,Value=true \
+    --temporary-password "Temp1234!" \
+    --message-action SUPPRESS
+  awslocal cognito-idp admin-set-user-password \
+    --user-pool-id "$POOL_ID" \
+    --username "$USERNAME" \
+    --password "Test1234!" \
+    --permanent
+  awslocal cognito-idp admin-add-user-to-group \
+    --user-pool-id "$POOL_ID" \
+    --username "$USERNAME" \
+    --group-name "$ROLE"
+  echo "Created test user: $USERNAME (group: $ROLE, password: Test1234!)"
+done
+
+# Write IDs to shared config so services can pick them up via env_file
+# This file's presence also signals the health check that init is complete.
+CONFIG_DIR=/etc/localstack/init/localstack-config
+mkdir -p "$CONFIG_DIR"
+cat > "$CONFIG_DIR/cognito.env" <<EOF
+COGNITO_USER_POOL_ID=${POOL_ID}
+COGNITO_CLIENT_ID=${CLIENT_ID}
+EOF
+echo "Wrote Cognito IDs to $CONFIG_DIR/cognito.env"
+
+# ──────────────────────────────────────────────
 # Lambda Functions
 # ──────────────────────────────────────────────
 

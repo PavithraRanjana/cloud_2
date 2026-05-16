@@ -18,6 +18,8 @@ DEFAULT_ALGORITHM = "HS256"
 _COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")
 _COGNITO_CLIENT_ID = os.environ.get("COGNITO_CLIENT_ID", "")
 _AWS_REGION = os.environ.get("AWS_REGION", "eu-west-1")
+# Set in docker-compose for LocalStack (http://localstack:4566); empty = real AWS
+_AWS_ENDPOINT_URL = os.environ.get("AWS_ENDPOINT_URL", "")
 
 # JWKS cache: {kid: raw_key_dict}, refreshed at most once per hour
 _jwks_cache: dict = {}
@@ -26,6 +28,9 @@ _JWKS_TTL = 3600
 
 
 def _cognito_issuer() -> str:
+    if _AWS_ENDPOINT_URL:
+        # LocalStack: JWT issuer matches the LocalStack endpoint
+        return f"{_AWS_ENDPOINT_URL}/{_COGNITO_USER_POOL_ID}"
     return f"https://cognito-idp.{_AWS_REGION}.amazonaws.com/{_COGNITO_USER_POOL_ID}"
 
 

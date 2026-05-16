@@ -1,4 +1,5 @@
 .env
+infrastructure/localstack/cognito.env
 venv/
 __pycache__/
 *.pyc

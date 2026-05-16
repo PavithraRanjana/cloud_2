@@ -161,6 +161,8 @@ async def _update_booking_status(booking_id: str, payload: dict) -> None:
                 resp.raise_for_status()
 
 
+_INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+
 async def _award_loyalty(user_id: str, points: int) -> None:
     async for attempt in async_retry():
         with attempt:
@@ -168,6 +170,7 @@ async def _award_loyalty(user_id: str, points: int) -> None:
                 resp = await client.post(
                     f"{config.passenger_service_url}/api/v1/passengers/loyalty/award",
                     json={"user_id": user_id, "points": points},
+                    headers={"X-Internal-API-Key": _INTERNAL_API_KEY},
                 )
                 resp.raise_for_status()
 

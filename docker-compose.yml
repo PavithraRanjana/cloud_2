@@ -157,6 +157,8 @@ services:
       - SERVICE_NAME=payment-service
       - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
       - BOOKING_SERVICE_URL=http://booking-service:8003
+      - PASSENGER_SERVICE_URL=http://passenger-service:8007
+      - INTERNAL_API_KEY=aerolink-internal-dev-key
       - AWS_ENDPOINT_URL=http://localstack:4566
       - REDIS_URL=redis://redis:6379/3
     depends_on:
@@ -229,6 +231,10 @@ services:
       - SERVICE_NAME=passenger-service
       - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
       - REDIS_URL=redis://redis:6379/6
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8008
+      - INTERNAL_API_KEY=aerolink-internal-dev-key
     depends_on:
       postgres:
         condition: service_healthy

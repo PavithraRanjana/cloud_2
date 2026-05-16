@@ -12,6 +12,7 @@ from sqlalchemy import select, text
 import httpx
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
+from fastapi.security import APIKeyHeader
 from shared.auth import get_current_user
 from shared.encryption import encrypt_field, decrypt_field
 from shared.audit import AuditLog, record_audit
@@ -31,6 +32,15 @@ START_TIME = time.time()
 
 redis_client = create_redis_client(config.redis_url)
 PROFILE_CACHE_TTL = 300  # 5 minutes; invalidated on update or loyalty award
+
+# Internal service-to-service API key — shared with payment-service via INTERNAL_API_KEY env var.
+# This protects the loyalty/award endpoint from unauthenticated external callers.
+_INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+_internal_key_header = APIKeyHeader(name="X-Internal-API-Key", auto_error=False)
+
+async def require_internal_key(key: str | None = Depends(_internal_key_header)):
+    if not _INTERNAL_API_KEY or key != _INTERNAL_API_KEY:
+        raise HTTPException(status_code=403, detail="Forbidden")
 
 
 async def get_db():
@@ -183,6 +193,7 @@ POINTS_PER_DOLLAR = 10  # 10 pts per $1 spent
 @app.post("/api/v1/passengers/loyalty/award")
 async def award_loyalty_points(
     data: dict,
+    _: None = Depends(require_internal_key),
     db: AsyncSession = Depends(get_db),
 ):
     """Internal endpoint — called by payment-service after successful payment."""

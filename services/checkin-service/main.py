@@ -30,7 +30,7 @@ config = BaseConfig(service_name="checkin-service")
 setup_logging(config.service_name)
 logger = structlog.get_logger()
 
-S3_BUCKET = "aerolink-documents"
+S3_BUCKET = os.environ.get("S3_BUCKET", "aerolink-documents")
 
 _s3 = None
 try:
@@ -191,7 +191,9 @@ async def check_in(data: CheckInRequest,
 
 
 @app.get("/api/v1/checkin/{booking_id}", response_model=CheckInResponse)
-async def get_checkin(booking_id: str, db: AsyncSession = Depends(get_db)):
+async def get_checkin(booking_id: str,
+                      current_user: dict = Depends(get_current_user),
+                      db: AsyncSession = Depends(get_db)):
     cached = redis_get_json(redis_client, f"checkin:{booking_id}")
     if cached is not None:
         return cached

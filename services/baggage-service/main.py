@@ -155,13 +155,16 @@ async def track_baggage(tag_number: str, db: AsyncSession = Depends(get_db)):
 
 
 @app.get("/api/v1/baggage/booking/{booking_id}", response_model=list[BaggageResponse])
-async def get_baggage_by_booking(booking_id: str, db: AsyncSession = Depends(get_db)):
+async def get_baggage_by_booking(booking_id: str,
+                                 current_user: dict = Depends(get_current_user),
+                                 db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Baggage).where(Baggage.booking_id == booking_id))
     return [_to_response(b) for b in result.scalars().all()]
 
 
 @app.put("/api/v1/baggage/{tag_number}/status", response_model=BaggageResponse)
 async def update_baggage_status(tag_number: str, data: BaggageStatusUpdate,
+                                current_user: dict = Depends(RoleChecker(["admin", "airline-staff", "airport-operator"])),
                                 db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Baggage).where(Baggage.tag_number == tag_number))
     baggage = result.scalar_one_or_none()

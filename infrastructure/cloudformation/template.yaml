@@ -95,6 +95,12 @@ Parameters:
     Type: String
     Description: S3 bucket containing Lambda deployment packages (ZIP files)
 
+  InternalApiKey:
+    Type: String
+    NoEcho: true
+    MinLength: 16
+    Description: Shared secret used for service-to-service calls (e.g. loyalty/award)
+
 Resources:
 
   # ============================================================
@@ -1086,6 +1092,8 @@ Resources:
               Value: http://booking-service.aerolink.local:8003
             - Name: PASSENGER_SERVICE_URL
               Value: http://passenger-service.aerolink.local:8007
+            - Name: INTERNAL_API_KEY
+              Value: !Ref InternalApiKey
             - Name: JWT_SECRET
               Value: !Ref JWTSecret
             - Name: AWS_REGION
@@ -1176,6 +1184,10 @@ Resources:
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/5'
             - Name: BOOKING_SERVICE_URL
               Value: http://booking-service.aerolink.local:8003
+            - Name: FLIGHT_SERVICE_URL
+              Value: http://flight-service.aerolink.local:8002
+            - Name: S3_BUCKET
+              Value: !Ref DocumentsBucket
             - Name: JWT_SECRET
               Value: !Ref JWTSecret
             - Name: AWS_REGION
@@ -1220,6 +1232,12 @@ Resources:
               Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/6'
+            - Name: BOOKING_SERVICE_URL
+              Value: http://booking-service.aerolink.local:8003
+            - Name: NOTIFICATION_SERVICE_URL
+              Value: http://notification-service.aerolink.local:8008
+            - Name: INTERNAL_API_KEY
+              Value: !Ref InternalApiKey
             - Name: JWT_SECRET
               Value: !Ref JWTSecret
           LogConfiguration:

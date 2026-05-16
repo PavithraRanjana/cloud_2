@@ -249,6 +249,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://aerolink:aerolink@postgres:5432/aerolink
       - AWS_ENDPOINT_URL=http://localstack:4566
       - REDIS_URL=redis://redis:6379/7
+      - ENABLE_SQS_POLLING=true
     depends_on:
       postgres:
         condition: service_healthy

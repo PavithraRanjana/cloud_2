@@ -298,6 +298,8 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(get_curre
                 "booking_reference": booking.booking_reference,
                 "flight_id": str(booking.flight_id),
                 "user_id": str(booking.user_id),
+                "passenger_name": booking.passenger_name,
+                "passenger_email": booking.passenger_email,
             })
         except Exception:
             pass

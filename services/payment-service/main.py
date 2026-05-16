@@ -181,12 +181,15 @@ async def process_payment(data: PaymentCreate, request: Request,
 
         if event_publisher:
             try:
-                event_publisher.publish("payment-service", "PaymentProcessed", {
+                event_publisher.publish("payment-service", "PaymentCompleted", {
                     "payment_id": str(payment.id),
                     "booking_id": data.booking_id,
+                    "booking_reference": data.booking_id,
                     "amount": data.amount,
                     "currency": data.currency,
                     "transaction_ref": result,
+                    "passenger_email": current_user.get("email", ""),
+                    "passenger_name": current_user.get("username", ""),
                 })
             except Exception:
                 pass
@@ -270,6 +273,9 @@ async def refund_payment(payment_id: str, data: RefundRequest, request: Request,
                 "payment_id": str(payment.id),
                 "booking_id": str(payment.booking_id),
                 "amount": payment.amount,
+                "currency": payment.currency,
+                "passenger_email": current_user.get("email", ""),
+                "passenger_name": current_user.get("username", ""),
             })
         except Exception:
             pass

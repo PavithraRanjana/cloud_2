@@ -7,6 +7,7 @@ class BaggageRegister(BaseModel):
     booking_id: str
     flight_id: str
     passenger_name: str
+    passenger_email: Optional[str] = None
     weight_kg: float = Field(0.0, ge=0, le=50)
     description: Optional[str] = None
 

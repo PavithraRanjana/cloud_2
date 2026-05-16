@@ -8,6 +8,7 @@ interface Booking {
   booking_reference: string;
   flight_id: string;
   passenger_name: string;
+  passenger_email: string;
   cabin_class: string;
   status: string;
 }
@@ -87,11 +88,12 @@ function BookingBaggageRow({ booking }: { booking: Booking }) {
     mutationFn: async () => {
       const { data, error } = await baggageClient.POST("/api/v1/baggage", {
         body: {
-          booking_id:     booking.id,
-          flight_id:      booking.flight_id,
-          passenger_name: booking.passenger_name,
-          weight_kg:      parseFloat(weight),
-          description:    desc || undefined,
+          booking_id:      booking.id,
+          flight_id:       booking.flight_id,
+          passenger_name:  booking.passenger_name,
+          passenger_email: booking.passenger_email,
+          weight_kg:       parseFloat(weight),
+          description:     desc || undefined,
         },
       });
       if (error || !data) throw new Error("Failed to register baggage");

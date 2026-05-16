@@ -15,12 +15,14 @@ interface Notification {
 }
 
 const EVENT_STYLE: Record<string, { icon: string; colour: string }> = {
-  BookingCreated:    { icon: "🎫", colour: "bg-blue-50   border-blue-200   text-blue-700"   },
+  BookingCreated:    { icon: "🎫", colour: "bg-blue-50    border-blue-200    text-blue-700"    },
   PaymentCompleted:  { icon: "💳", colour: "bg-emerald-50 border-emerald-200 text-emerald-700" },
-  CheckInCompleted:  { icon: "✅", colour: "bg-sky-50    border-sky-200    text-sky-700"    },
-  BaggageRegistered: { icon: "🧳", colour: "bg-amber-50  border-amber-200  text-amber-700"  },
-  BookingCancelled:  { icon: "❌", colour: "bg-red-50    border-red-200    text-red-700"    },
-  FlightUpdated:     { icon: "✈",  colour: "bg-violet-50 border-violet-200 text-violet-700" },
+  CheckInCompleted:  { icon: "✅", colour: "bg-sky-50     border-sky-200     text-sky-700"     },
+  BaggageRegistered: { icon: "🧳", colour: "bg-amber-50   border-amber-200   text-amber-700"   },
+  BaggageStatusChanged: { icon: "🧳", colour: "bg-amber-50 border-amber-200 text-amber-700"   },
+  BookingCancelled:  { icon: "❌", colour: "bg-red-50     border-red-200     text-red-700"     },
+  PaymentRefunded:   { icon: "↩️", colour: "bg-orange-50  border-orange-200  text-orange-700"  },
+  FlightUpdated:     { icon: "✈",  colour: "bg-violet-50  border-violet-200  text-violet-700"  },
 };
 
 function timeAgo(iso: string) {

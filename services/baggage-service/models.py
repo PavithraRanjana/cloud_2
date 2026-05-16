@@ -26,6 +26,7 @@ class Baggage(Base):
     tag_number = Column(String(20), unique=True, nullable=False, index=True)
     booking_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     passenger_name = Column(String(255), nullable=False)
+    passenger_email = Column(String(255), nullable=True)
     flight_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     weight_kg = Column(Float, default=0.0)
     status = Column(SAEnum(BaggageStatus), default=BaggageStatus.REGISTERED, nullable=False)

@@ -2,6 +2,7 @@ import sys
 import os
 import time
 import json
+import asyncio
 import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -28,27 +29,34 @@ engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
 
-# Notification templates
 TEMPLATES = {
     "BookingCreated": {
-        "subject": "Booking Confirmation - {booking_reference}",
-        "body": "Dear {passenger_name},\n\nYour booking {booking_reference} has been created successfully.\n\nFlight: {flight_id}\nTotal: EUR {total_price}\n\nPlease proceed to payment to confirm your booking.\n\nThank you for choosing AeroLink!",
+        "subject": "Booking Confirmed – {booking_reference}",
+        "body": "Hi {passenger_name},\n\nYour booking {booking_reference} has been confirmed.\n\nFlight: {flight_id}\nCabin: {cabin_class}\nTotal: ${total_price}\n\nProceed to payment to complete your booking.\n\nAeroLink",
     },
-    "PaymentProcessed": {
-        "subject": "Payment Confirmed - Booking {booking_id}",
-        "body": "Dear Customer,\n\nYour payment of EUR {amount} has been processed successfully.\n\nTransaction Reference: {transaction_ref}\nBooking: {booking_id}\n\nYou can now check in online.\n\nThank you for choosing AeroLink!",
+    "PaymentCompleted": {
+        "subject": "Payment Received – Booking {booking_reference}",
+        "body": "Hi {passenger_name},\n\nYour payment of ${amount} {currency} has been received.\n\nTransaction: {transaction_ref}\nBooking: {booking_reference}\n\nYou can now check in online.\n\nAeroLink",
     },
     "CheckInCompleted": {
-        "subject": "Check-In Complete - Seat {seat_number}",
-        "body": "Dear {passenger_name},\n\nYou have been checked in successfully.\n\nSeat: {seat_number}\nFlight: {flight_id}\n\nYour boarding pass is ready. Please arrive at the gate at least 30 minutes before departure.\n\nHave a great flight!",
+        "subject": "Check-In Confirmed – Seat {seat_number}",
+        "body": "Hi {passenger_name},\n\nYou have successfully checked in.\n\nSeat: {seat_number}\nBoarding Group: {boarding_group}\nGate: {gate}\n\nPlease arrive at the gate at least 30 minutes before departure.\n\nHave a great flight!\nAeroLink",
+    },
+    "BaggageRegistered": {
+        "subject": "Baggage Registered – {tag_number}",
+        "body": "Hi {passenger_name},\n\nYour baggage has been registered.\n\nTag: {tag_number}\nWeight: {weight_kg} kg\n\nYou can track your baggage at any time through the app.\n\nAeroLink",
     },
     "BaggageStatusChanged": {
-        "subject": "Baggage Update - {tag_number}",
-        "body": "Baggage {tag_number} status update:\n\nNew Status: {status}\nLocation: {location}\n\nTrack your baggage at any time through our app.",
+        "subject": "Baggage Update – {tag_number}",
+        "body": "Hi {passenger_name},\n\nYour baggage {tag_number} status has been updated.\n\nStatus: {status}\nLocation: {location}\n\nAeroLink",
     },
     "BookingCancelled": {
-        "subject": "Booking Cancelled - {booking_reference}",
-        "body": "Your booking {booking_reference} has been cancelled.\n\nIf you made a payment, a refund will be processed within 5-7 business days.\n\nWe hope to see you again soon.",
+        "subject": "Booking Cancelled – {booking_reference}",
+        "body": "Hi {passenger_name},\n\nYour booking {booking_reference} has been cancelled.\n\nIf you made a payment, your refund will be processed within 5-7 business days.\n\nWe hope to see you again.\nAeroLink",
+    },
+    "PaymentRefunded": {
+        "subject": "Refund Processed – ${amount}",
+        "body": "Hi {passenger_name},\n\nA refund of ${amount} {currency} has been processed for booking {booking_id}.\n\nPlease allow 5-7 business days for the funds to appear in your account.\n\nAeroLink",
     },
 }
 
@@ -73,14 +81,13 @@ async def lifespan(app: FastAPI):
         try:
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
-            pass  # Table may already exist from another service starting concurrently
+            pass
     if ENABLE_SQS_POLLING:
-        # Start SQS polling in background thread (disabled by default; Lambda handles SQS)
         poller = threading.Thread(target=poll_events, daemon=True)
         poller.start()
-        logger.info("sqs_polling_enabled", msg="Background SQS polling thread started")
+        logger.info("sqs_polling_enabled")
     else:
-        logger.info("sqs_polling_disabled", msg="SQS polling disabled; Lambda handles dispatch")
+        logger.info("sqs_polling_disabled")
     yield
     await engine.dispose()
 
@@ -96,6 +103,63 @@ async def get_db():
         except Exception:
             await session.rollback()
             raise
+
+
+async def _persist_notification(recipient_email: str, recipient_name: str,
+                                event_type: str, subject: str, body: str):
+    """Save a notification to the database. Called from the polling thread via asyncio.run()."""
+    async with SessionFactory() as session:
+        notification = Notification(
+            recipient_email=recipient_email,
+            recipient_name=recipient_name,
+            notification_type=NotificationType.EMAIL,
+            subject=subject,
+            body=body,
+            event_type=event_type,
+            status=NotificationStatus.SENT,
+        )
+        session.add(notification)
+        await session.commit()
+
+
+def process_event(event_body: dict):
+    """Process an SQS event and persist it as a notification in the database."""
+    detail_type = event_body.get("detail-type", "")
+    detail = event_body.get("detail", {})
+    if isinstance(detail, str):
+        detail = json.loads(detail)
+
+    template = TEMPLATES.get(detail_type)
+    if not template:
+        logger.info("no_template_for_event", detail_type=detail_type)
+        return
+
+    class _SafeDict(dict):
+        def __missing__(self, key):
+            return "N/A"
+
+    safe = _SafeDict(detail)
+    subject = template["subject"].format_map(safe)
+    body    = template["body"].format_map(safe)
+
+    recipient_email = detail.get("passenger_email", "")
+    recipient_name  = detail.get("passenger_name", "")
+
+    if not recipient_email:
+        logger.warning("no_recipient_email_in_event", detail_type=detail_type)
+        return
+
+    try:
+        asyncio.run(_persist_notification(
+            recipient_email=recipient_email,
+            recipient_name=recipient_name,
+            event_type=detail_type,
+            subject=subject,
+            body=body,
+        ))
+        logger.info("notification_persisted", event_type=detail_type, recipient=recipient_email)
+    except Exception as e:
+        logger.error("notification_persist_failed", error=str(e), detail_type=detail_type)
 
 
 def poll_events():
@@ -123,32 +187,6 @@ def poll_events():
         except Exception as e:
             logger.error("poll_error", error=str(e))
             time.sleep(10)
-
-
-def process_event(event_body: dict):
-    """Process an event from EventBridge via SQS."""
-    detail_type = event_body.get("detail-type", "")
-    detail = event_body.get("detail", {})
-    if isinstance(detail, str):
-        detail = json.loads(detail)
-
-    template = TEMPLATES.get(detail_type)
-    if not template:
-        logger.info("no_template_for_event", detail_type=detail_type)
-        return
-
-    class _SafeDict(dict):
-        def __missing__(self, key):
-            return "N/A"
-
-    safe = _SafeDict(detail)
-    subject = template["subject"].format_map(safe)
-    body = template["body"].format_map(safe)
-
-    logger.info("notification_sent",
-                event_type=detail_type,
-                subject=subject,
-                recipient=detail.get("passenger_email", "unknown"))
 
 
 @app.get("/health", response_model=HealthResponse)

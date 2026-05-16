@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
@@ -66,7 +66,10 @@ async def lifespan(app: FastAPI):
         try:
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
-            pass  # Table may already exist from another service starting concurrently
+            pass
+        await conn.execute(text(
+            "ALTER TABLE baggage ADD COLUMN IF NOT EXISTS passenger_email VARCHAR(255)"
+        ))
     yield
     await engine.dispose()
 
@@ -88,6 +91,7 @@ async def register_baggage(data: BaggageRegister,
         tag_number=generate_tag(),
         booking_id=data.booking_id,
         passenger_name=data.passenger_name,
+        passenger_email=data.passenger_email,
         flight_id=data.flight_id,
         weight_kg=data.weight_kg,
         description=data.description,
@@ -95,6 +99,19 @@ async def register_baggage(data: BaggageRegister,
     db.add(baggage)
     await db.flush()
     await db.refresh(baggage)
+
+    if event_publisher:
+        try:
+            event_publisher.publish("baggage-service", "BaggageRegistered", {
+                "tag_number": baggage.tag_number,
+                "booking_id": str(baggage.booking_id),
+                "passenger_name": baggage.passenger_name,
+                "passenger_email": baggage.passenger_email or "",
+                "weight_kg": baggage.weight_kg,
+            })
+        except Exception:
+            pass
+
     return _to_response(baggage)
 
 
@@ -132,8 +149,10 @@ async def update_baggage_status(tag_number: str, data: BaggageStatusUpdate,
             event_publisher.publish("baggage-service", "BaggageStatusChanged", {
                 "tag_number": baggage.tag_number,
                 "booking_id": str(baggage.booking_id),
+                "passenger_name": baggage.passenger_name,
+                "passenger_email": baggage.passenger_email or "",
                 "status": baggage.status.value,
-                "location": baggage.last_location,
+                "location": baggage.last_location or "N/A",
             })
         except Exception:
             pass

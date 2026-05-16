@@ -38,7 +38,7 @@ export function Navbar() {
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-6 py-3">
         <span className="text-xl font-bold tracking-tight">✈ AeroLink</span>
 
-        <nav className="flex flex-1 gap-1">
+        <nav className="flex flex-1 gap-1 flex-wrap">
           {links.map(({ to, label }) => (
             <NavLink
               key={to}
@@ -58,6 +58,18 @@ export function Navbar() {
               )}
             </NavLink>
           ))}
+          {["admin", "airline-staff"].includes(user?.role ?? "") && (
+            <NavLink
+              to="/staff/flights"
+              className={({ isActive }) =>
+                `rounded px-3 py-1.5 text-sm font-medium transition-colors border border-white/30 ${
+                  isActive ? "bg-white/20" : "hover:bg-white/10"
+                }`
+              }
+            >
+              Staff ✦
+            </NavLink>
+          )}
         </nav>
 
         <div className="flex items-center gap-3 text-sm">

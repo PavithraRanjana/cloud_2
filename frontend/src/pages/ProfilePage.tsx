@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { passengerClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
@@ -37,10 +38,28 @@ const TIER_STYLE: Record<string, string> = {
 const INPUT = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 const SELECT = "w-full h-9 rounded-lg border border-gray-300 px-2 text-sm bg-white focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
+interface GDPRConsent {
+  id: string;
+  purpose: string;
+  granted: boolean;
+  granted_at: string | null;
+  revoked_at: string | null;
+}
+
+const CONSENT_PURPOSES = [
+  { key: "marketing_emails",    label: "Marketing Emails",  desc: "Receive promotional offers, deals, and travel inspiration from AeroLink." },
+  { key: "analytics",           label: "Analytics",         desc: "Allow AeroLink to use your usage data to improve the service." },
+  { key: "third_party_sharing", label: "Partner Offers",    desc: "Receive offers from AeroLink's airline and travel partners." },
+  { key: "loyalty_program",     label: "Loyalty Programme", desc: "Participate in the AeroLink loyalty points programme." },
+];
+
 export function ProfilePage() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
 
   const { data: profile, isLoading, isError, error } = useQuery<PassengerProfile | null>({
     queryKey: ["passenger-profile"],
@@ -98,6 +117,33 @@ export function ProfilePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["passenger-profile"] });
       setEditing(false);
+    },
+  });
+
+  const { data: consents = [] } = useQuery<GDPRConsent[]>({
+    queryKey: ["gdpr-consents"],
+    queryFn: async () => {
+      const { data } = await (passengerClient as any).GET("/api/v1/passengers/consent", {});
+      return (data as GDPRConsent[]) ?? [];
+    },
+  });
+
+  const setConsent = useMutation({
+    mutationFn: async ({ purpose, granted }: { purpose: string; granted: boolean }) => {
+      await (passengerClient as any).POST("/api/v1/passengers/consent", {
+        body: { purpose, granted },
+      });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["gdpr-consents"] }),
+  });
+
+  const deleteAccount = useMutation({
+    mutationFn: async () => {
+      await (passengerClient as any).DELETE("/api/v1/passengers/profile", {});
+    },
+    onSuccess: () => {
+      logout();
+      navigate("/login");
     },
   });
 
@@ -276,6 +322,96 @@ export function ProfilePage() {
           </div>
         )}
       </div>
+
+      {/* Privacy & Consent */}
+      <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6">
+        <div className="mb-5">
+          <h3 className="font-bold text-gray-900">Privacy & Consent</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Manage how AeroLink uses your data. Changes take effect immediately.</p>
+        </div>
+        <div className="space-y-4">
+          {CONSENT_PURPOSES.map(({ key, label, desc }) => {
+            const consent = consents.find((c) => c.purpose === key);
+            const isGranted = consent?.granted ?? false;
+            return (
+              <div key={key} className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-800">{label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{desc}</p>
+                </div>
+                <button
+                  onClick={() => setConsent.mutate({ purpose: key, granted: !isGranted })}
+                  disabled={setConsent.isPending}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${
+                    isGranted ? "bg-blue-600" : "bg-gray-200"
+                  }`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition duration-200 ${
+                    isGranted ? "translate-x-5" : "translate-x-0"
+                  }`} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="rounded-2xl bg-white border border-red-100 shadow-sm p-6">
+        <div className="mb-4">
+          <h3 className="font-bold text-red-600">Danger Zone</h3>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Deleting your account removes all personal data (GDPR Article 17). Bookings are anonymised. This cannot be undone.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowDeleteModal(true)}
+          className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors"
+        >
+          Delete My Account
+        </button>
+      </div>
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900">Delete your account?</h3>
+            <p className="mt-2 text-sm text-gray-500">
+              This will permanently delete your passenger profile and anonymise all associated bookings and notifications. You will be logged out immediately.
+            </p>
+            <p className="mt-4 text-sm text-gray-700 font-medium">
+              Type <span className="font-mono font-bold text-red-600">DELETE</span> to confirm:
+            </p>
+            <input
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value)}
+              placeholder="DELETE"
+              className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-red-400 focus:outline-none focus:ring-1 focus:ring-red-400"
+            />
+            {deleteAccount.isError && (
+              <p className="mt-2 text-xs text-red-500">
+                {deleteAccount.error instanceof Error ? deleteAccount.error.message : "Deletion failed"}
+              </p>
+            )}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirm(""); }}
+                className="flex-1 rounded-lg border border-gray-200 py-2 text-sm font-medium hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteAccount.mutate()}
+                disabled={deleteConfirm !== "DELETE" || deleteAccount.isPending}
+                className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {deleteAccount.isPending ? "Deleting…" : "Delete Account"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

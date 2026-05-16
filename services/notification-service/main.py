@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import boto3
 import structlog
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
@@ -26,8 +28,15 @@ config = BaseConfig(service_name="notification-service")
 setup_logging(config.service_name)
 logger = structlog.get_logger()
 
+# Async engine for FastAPI request handlers
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
+
+# Sync engine for the background polling thread (avoids event-loop conflicts)
+_sync_db_url = config.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+_sync_engine = create_engine(_sync_db_url)
+SyncSessionFactory = sessionmaker(bind=_sync_engine)
+
 START_TIME = time.time()
 
 SES_SENDER_EMAIL = os.environ.get("SES_SENDER_EMAIL", "noreply@aerolink.com")
@@ -190,13 +199,18 @@ def process_event(event_body: dict):
         return
 
     try:
-        asyncio.run(_persist_notification(
-            recipient_email=recipient_email,
-            recipient_name=recipient_name,
-            event_type=detail_type,
-            subject=subject,
-            body=body,
-        ))
+        with SyncSessionFactory() as session:
+            notification = Notification(
+                recipient_email=recipient_email,
+                recipient_name=recipient_name,
+                notification_type=NotificationType.EMAIL,
+                subject=subject,
+                body=body,
+                event_type=detail_type,
+                status=NotificationStatus.SENT,
+            )
+            session.add(notification)
+            session.commit()
         logger.info("notification_persisted", event_type=detail_type, recipient=recipient_email)
     except Exception as e:
         logger.error("notification_persist_failed", error=str(e), detail_type=detail_type)

@@ -44,18 +44,18 @@ awslocal events put-targets \
 
 echo "Created rule: BookingCreated -> notifications"
 
-# Rule 2: PaymentProcessed -> notification queue
+# Rule 2: PaymentCompleted -> notification queue
 awslocal events put-rule \
-  --name payment-processed-to-notifications \
+  --name payment-completed-to-notifications \
   --event-bus-name aerolink-events \
-  --event-pattern '{"source":["payment-service"],"detail-type":["PaymentProcessed"]}'
+  --event-pattern '{"source":["payment-service"],"detail-type":["PaymentCompleted"]}'
 
 awslocal events put-targets \
-  --rule payment-processed-to-notifications \
+  --rule payment-completed-to-notifications \
   --event-bus-name aerolink-events \
   --targets "Id=notification-queue,Arn=$NOTIFICATION_QUEUE_ARN"
 
-echo "Created rule: PaymentProcessed -> notifications"
+echo "Created rule: PaymentCompleted -> notifications"
 
 # Rule 3: CheckInCompleted -> notification queue
 awslocal events put-rule \
@@ -108,6 +108,32 @@ awslocal events put-targets \
   --targets "Id=notification-queue,Arn=$NOTIFICATION_QUEUE_ARN"
 
 echo "Created rule: PaymentFailed -> notifications"
+
+# Rule 7: BaggageRegistered -> notification queue
+awslocal events put-rule \
+  --name baggage-registered-to-notifications \
+  --event-bus-name aerolink-events \
+  --event-pattern '{"source":["baggage-service"],"detail-type":["BaggageRegistered"]}'
+
+awslocal events put-targets \
+  --rule baggage-registered-to-notifications \
+  --event-bus-name aerolink-events \
+  --targets "Id=notification-queue,Arn=$NOTIFICATION_QUEUE_ARN"
+
+echo "Created rule: BaggageRegistered -> notifications"
+
+# Rule 8: PaymentRefunded -> notification queue
+awslocal events put-rule \
+  --name payment-refunded-to-notifications \
+  --event-bus-name aerolink-events \
+  --event-pattern '{"source":["payment-service"],"detail-type":["PaymentRefunded"]}'
+
+awslocal events put-targets \
+  --rule payment-refunded-to-notifications \
+  --event-bus-name aerolink-events \
+  --targets "Id=notification-queue,Arn=$NOTIFICATION_QUEUE_ARN"
+
+echo "Created rule: PaymentRefunded -> notifications"
 
 # Create S3 bucket for boarding passes / documents
 awslocal s3 mb s3://aerolink-documents

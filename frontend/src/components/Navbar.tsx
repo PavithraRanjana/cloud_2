@@ -3,18 +3,26 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../contexts/AuthContext";
 import { notificationClient } from "../api/client";
 
-const links = [
-  { to: "/",            label: "Dashboard"      },
-  { to: "/flights",     label: "Flights"        },
-  { to: "/bookings",    label: "Bookings"       },
-  { to: "/checkin",     label: "Check-in"       },
-  { to: "/baggage",     label: "Baggage"        },
-  { to: "/notifications", label: "Notifications" },
+const PASSENGER_LINKS = [
+  { to: "/",              label: "Dashboard"      },
+  { to: "/flights",       label: "Flights"        },
+  { to: "/bookings",      label: "Bookings"       },
+  { to: "/checkin",       label: "Check-in"       },
+  { to: "/baggage",       label: "Baggage"        },
+  { to: "/notifications", label: "Notifications"  },
+];
+
+const ADMIN_LINKS = [
+  { to: "/",              label: "Dashboard"      },
+  { to: "/flights",       label: "Flights"        },
+  { to: "/notifications", label: "Notifications"  },
 ];
 
 export function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const isAdmin = user?.role === "admin";
+  const links = isAdmin ? ADMIN_LINKS : PASSENGER_LINKS;
 
   const { data: notifications = [] } = useQuery<{ is_read: boolean }[]>({
     queryKey: ["notifications"],

@@ -1,3 +1,4 @@
+import { useAuth } from "../contexts/AuthContext";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -216,7 +217,20 @@ function BookingBaggageRow({ booking }: { booking: Booking }) {
   );
 }
 
+function AccessDenied({ feature }: { feature: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <div className="text-5xl mb-4">🔒</div>
+      <h2 className="text-xl font-bold text-gray-800">Not Available for Admins</h2>
+      <p className="text-sm text-gray-400 mt-2 max-w-sm">{feature} is a passenger feature. Admin accounts manage operations, not personal travel.</p>
+    </div>
+  );
+}
+
 export function BaggagePage() {
+  const { user } = useAuth();
+  if (user?.role === "admin") return <AccessDenied feature="Baggage management" />;
+
   const { data: bookings = [], isLoading, isError } = useQuery<Booking[]>({
     queryKey: ["bookings"],
     queryFn: async () => {

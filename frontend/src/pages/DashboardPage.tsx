@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { bookingClient, notificationClient, flightClient } from "../api/client";
+import { AdminDashboardPage } from "./AdminDashboardPage";
 
 interface Booking {
   id: string;
@@ -139,6 +140,7 @@ function NextFlightCard({ booking }: { booking: Booking }) {
 
 export function DashboardPage() {
   const { user } = useAuth();
+  if (user?.role === "admin") return <AdminDashboardPage />;
 
   const { data: bookings = [] } = useQuery<Booking[]>({
     queryKey: ["bookings"],

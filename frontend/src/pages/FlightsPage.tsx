@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { flightClient } from "../api/client";
 import { AirportCombobox, AIRPORTS } from "../components/AirportCombobox";
+import { useAuth } from "../contexts/AuthContext";
 
 interface Flight {
   id: string;
@@ -63,9 +64,10 @@ interface FlightCardProps {
   cabinClass: string;
   onBook: () => void;
   isBooking: boolean;
+  isAdmin?: boolean;
 }
 
-function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) {
+function FlightCard({ flight, cabinClass, onBook, isBooking, isAdmin }: FlightCardProps) {
   const priceMap: Record<string, number> = {
     economy:  flight.price_economy,
     business: flight.price_business,
@@ -213,13 +215,15 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
               <p className="text-[11px] capitalize font-medium text-blue-400">{priceLabel}</p>
             </div>
           )}
-          <button
-            onClick={onBook}
-            disabled={isBooking || unavailable}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {unavailable ? "Unavailable" : "Book"}
-          </button>
+          {!isAdmin && (
+            <button
+              onClick={onBook}
+              disabled={isBooking || unavailable}
+              className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {unavailable ? "Unavailable" : "Book"}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -228,6 +232,8 @@ function FlightCard({ flight, cabinClass, onBook, isBooking }: FlightCardProps) 
 
 export function FlightsPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const [filters, setFilters] = useState({
     origin: "",
@@ -381,6 +387,7 @@ export function FlightsPage() {
             cabinClass={filters.cabin_class}
             onBook={() => handleBook(flight)}
             isBooking={false}
+            isAdmin={isAdmin}
           />
         ))}
       </div>

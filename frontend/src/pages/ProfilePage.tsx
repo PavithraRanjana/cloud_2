@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { passengerClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import { NATIONALITIES } from "../data/nationalities";
+import { COUNTRY_CODES } from "../data/countryCodes";
 
 interface PassengerProfile {
   id: string;
@@ -67,6 +68,13 @@ export function ProfilePage() {
     n.toLowerCase().includes(natQuery.toLowerCase())
   );
 
+  const [ccQuery, setCcQuery] = useState("");
+  const [ccOpen, setCcOpen] = useState(false);
+  const filteredCountryCodes = COUNTRY_CODES.filter((cc) =>
+    cc.label.toLowerCase().includes(ccQuery.toLowerCase()) ||
+    cc.dial.includes(ccQuery)
+  );
+
   const { data: profile, isLoading, isError, error } = useQuery<PassengerProfile | null>({
     queryKey: ["passenger-profile"],
     queryFn: async () => {
@@ -81,22 +89,27 @@ export function ProfilePage() {
 
   const [form, setForm] = useState({
     first_name: "", last_name: "", date_of_birth: "",
-    nationality: "", passport_number: "", phone_number: "",
+    nationality: "", passport_number: "", phone_country_code: "+1", phone_number: "",
     meal_preference: "", seat_preference: "",
   });
 
   useEffect(() => {
     if (profile) {
+      const raw = profile.phone_number ?? "";
+      const matched = COUNTRY_CODES.slice().sort((a, b) => b.dial.length - a.dial.length)
+        .find((cc) => raw.startsWith(cc.dial));
       setForm({
-        first_name:      profile.first_name    ?? "",
-        last_name:       profile.last_name     ?? "",
-        date_of_birth:   profile.date_of_birth ?? "",
-        nationality:     profile.nationality   ?? "",
-        passport_number: profile.passport_number ?? "",
-        phone_number:    profile.phone_number  ?? "",
-        meal_preference: profile.meal_preference ?? "",
-        seat_preference: profile.seat_preference ?? "",
+        first_name:          profile.first_name    ?? "",
+        last_name:           profile.last_name     ?? "",
+        date_of_birth:       profile.date_of_birth ?? "",
+        nationality:         profile.nationality   ?? "",
+        passport_number:     profile.passport_number ?? "",
+        phone_country_code:  matched ? matched.dial : "+1",
+        phone_number:        matched ? raw.slice(matched.dial.length).trimStart() : raw,
+        meal_preference:     profile.meal_preference ?? "",
+        seat_preference:     profile.seat_preference ?? "",
       });
+      if (matched) setCcQuery(matched.dial);
     }
   }, [profile]);
 
@@ -108,7 +121,9 @@ export function ProfilePage() {
         date_of_birth:   form.date_of_birth   || undefined,
         nationality:     form.nationality     || undefined,
         passport_number: form.passport_number || undefined,
-        phone_number:    form.phone_number    || undefined,
+        phone_number:    form.phone_number
+          ? `${form.phone_country_code} ${form.phone_number}`
+          : undefined,
         meal_preference: form.meal_preference || undefined,
         seat_preference: form.seat_preference || undefined,
       };
@@ -124,6 +139,7 @@ export function ProfilePage() {
       qc.invalidateQueries({ queryKey: ["passenger-profile"] });
       setEditing(false);
       setNatQuery("");
+      setCcQuery("");
     },
   });
 
@@ -303,8 +319,43 @@ export function ProfilePage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Phone Number</label>
-                <input value={form.phone_number} onChange={(e) => setForm(f => ({ ...f, phone_number: e.target.value }))}
-                  className={INPUT} placeholder="+1 555 0000" />
+                <div className="flex gap-2">
+                  <div className="relative w-32 shrink-0">
+                    <input
+                      type="text"
+                      value={ccQuery || form.phone_country_code}
+                      placeholder="Code…"
+                      onChange={(e) => {
+                        setCcQuery(e.target.value);
+                        setForm(f => ({ ...f, phone_country_code: "" }));
+                        setCcOpen(true);
+                      }}
+                      onFocus={() => { setCcQuery(""); setCcOpen(true); }}
+                      onBlur={() => setTimeout(() => setCcOpen(false), 150)}
+                      className={INPUT}
+                    />
+                    {ccOpen && filteredCountryCodes.length > 0 && (
+                      <ul className="absolute z-50 mt-1 max-h-48 w-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+                        {filteredCountryCodes.map((cc) => (
+                          <li key={cc.dial}
+                            onMouseDown={() => {
+                              setForm(f => ({ ...f, phone_country_code: cc.dial }));
+                              setCcQuery(cc.dial);
+                              setCcOpen(false);
+                            }}
+                            className="cursor-pointer px-3 py-2 hover:bg-blue-50 text-gray-700">{cc.label}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <input
+                    type="tel"
+                    value={form.phone_number}
+                    onChange={(e) => setForm(f => ({ ...f, phone_number: e.target.value }))}
+                    className={`flex-1 ${INPUT}`}
+                    placeholder="555 0000"
+                  />
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -341,7 +392,7 @@ export function ProfilePage() {
             )}
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => { setEditing(false); setNatQuery(""); }}
+              <button onClick={() => { setEditing(false); setNatQuery(""); setCcQuery(""); }}
                 className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
                 Cancel
               </button>

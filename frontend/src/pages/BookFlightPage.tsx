@@ -7,6 +7,7 @@ import { PaymentForm, PaymentFormData } from "../components/PaymentForm";
 import { SeatMap } from "../components/SeatMap";
 import { AIRPORTS } from "../components/AirportCombobox";
 import { NATIONALITIES } from "../data/nationalities";
+import { COUNTRY_CODES } from "../data/countryCodes";
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface Flight {
@@ -185,51 +186,6 @@ function ReturnFlightOption({ flight, selected, selectedCabin, onSelect, onCabin
 }
 
 // ── Country phone codes ───────────────────────────────────────────────────
-const COUNTRY_CODES = [
-  { dial: "+1",   label: "+1  (USA / Canada)"       },
-  { dial: "+44",  label: "+44  (United Kingdom)"    },
-  { dial: "+61",  label: "+61  (Australia)"         },
-  { dial: "+64",  label: "+64  (New Zealand)"       },
-  { dial: "+353", label: "+353 (Ireland)"           },
-  { dial: "+65",  label: "+65  (Singapore)"         },
-  { dial: "+94",  label: "+94  (Sri Lanka)"         },
-  { dial: "+91",  label: "+91  (India)"             },
-  { dial: "+86",  label: "+86  (China)"             },
-  { dial: "+81",  label: "+81  (Japan)"             },
-  { dial: "+82",  label: "+82  (South Korea)"       },
-  { dial: "+49",  label: "+49  (Germany)"           },
-  { dial: "+33",  label: "+33  (France)"            },
-  { dial: "+39",  label: "+39  (Italy)"             },
-  { dial: "+34",  label: "+34  (Spain)"             },
-  { dial: "+31",  label: "+31  (Netherlands)"       },
-  { dial: "+32",  label: "+32  (Belgium)"           },
-  { dial: "+41",  label: "+41  (Switzerland)"       },
-  { dial: "+46",  label: "+46  (Sweden)"            },
-  { dial: "+47",  label: "+47  (Norway)"            },
-  { dial: "+45",  label: "+45  (Denmark)"           },
-  { dial: "+358", label: "+358 (Finland)"           },
-  { dial: "+48",  label: "+48  (Poland)"            },
-  { dial: "+7",   label: "+7   (Russia)"            },
-  { dial: "+55",  label: "+55  (Brazil)"            },
-  { dial: "+52",  label: "+52  (Mexico)"            },
-  { dial: "+54",  label: "+54  (Argentina)"         },
-  { dial: "+27",  label: "+27  (South Africa)"      },
-  { dial: "+20",  label: "+20  (Egypt)"             },
-  { dial: "+971", label: "+971 (UAE)"               },
-  { dial: "+966", label: "+966 (Saudi Arabia)"      },
-  { dial: "+974", label: "+974 (Qatar)"             },
-  { dial: "+90",  label: "+90  (Turkey)"            },
-  { dial: "+92",  label: "+92  (Pakistan)"          },
-  { dial: "+880", label: "+880 (Bangladesh)"        },
-  { dial: "+66",  label: "+66  (Thailand)"          },
-  { dial: "+84",  label: "+84  (Vietnam)"           },
-  { dial: "+62",  label: "+62  (Indonesia)"         },
-  { dial: "+63",  label: "+63  (Philippines)"       },
-  { dial: "+60",  label: "+60  (Malaysia)"          },
-  { dial: "+234", label: "+234 (Nigeria)"           },
-  { dial: "+254", label: "+254 (Kenya)"             },
-  { dial: "+251", label: "+251 (Ethiopia)"          },
-];
 
 // ── Form field component ──────────────────────────────────────────────────
 function Field({

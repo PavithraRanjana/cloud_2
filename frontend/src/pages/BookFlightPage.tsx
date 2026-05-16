@@ -219,22 +219,29 @@ export function BookFlightPage() {
 
   const { flight, cabinClass: initialCabin, tripType = "one_way", returnDate = "" } = state;
   const isReturn = tripType === "return";
+  // No cabin pre-selected and not a return trip (return already has its own cabin step)
+  const needsCabinSel = !initialCabin && !isReturn;
 
   // Step constants
   const STEP_OUTBOUND   = 1;
   const STEP_RETURN_SEL = 2; // return trips only
-  const STEP_PASSENGER  = isReturn ? 3 : 1;
-  const STEP_CONTACT    = isReturn ? 4 : 2;
-  const STEP_SEAT       = isReturn ? 5 : 3;
-  const STEP_SUMMARY    = isReturn ? 6 : 4;
-  const STEP_PAYMENT    = isReturn ? 7 : 5;
+  const STEP_CABIN_SEL  = needsCabinSel ? 1 : 0; // one-way + any cabin
+  const STEP_PASSENGER  = isReturn ? 3 : (needsCabinSel ? 2 : 1);
+  const STEP_CONTACT    = isReturn ? 4 : (needsCabinSel ? 3 : 2);
+  const STEP_SEAT       = isReturn ? 5 : (needsCabinSel ? 4 : 3);
+  const STEP_SUMMARY    = isReturn ? 6 : (needsCabinSel ? 5 : 4);
+  const STEP_PAYMENT    = isReturn ? 7 : (needsCabinSel ? 6 : 5);
 
   const STEPS = isReturn
     ? ["Outbound", "Return", "Passenger", "Contact", "Seat", "Summary", "Payment"]
+    : needsCabinSel
+    ? ["Cabin", "Passenger", "Contact", "Seat", "Summary", "Payment"]
     : ["Passenger", "Contact", "Seat", "Summary", "Payment"];
 
   // ── State ────────────────────────────────────────────────────────────────
-  const [step, setStep] = useState<number>(isReturn ? STEP_OUTBOUND : STEP_PASSENGER);
+  const [step, setStep] = useState<number>(
+    isReturn ? STEP_OUTBOUND : needsCabinSel ? STEP_CABIN_SEL : STEP_PASSENGER
+  );
 
   // Outbound cabin
   const [cabin, setCabin] = useState(() => {
@@ -379,7 +386,8 @@ export function BookFlightPage() {
 
   function handleBack() {
     setErrors({});
-    if (step === (isReturn ? STEP_OUTBOUND : STEP_PASSENGER)) navigate("/flights");
+    const firstStep = isReturn ? STEP_OUTBOUND : needsCabinSel ? STEP_CABIN_SEL : STEP_PASSENGER;
+    if (step === firstStep) navigate("/flights");
     else setStep((s) => s - 1);
   }
 
@@ -567,7 +575,7 @@ export function BookFlightPage() {
         <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
-        {step === (isReturn ? STEP_OUTBOUND : STEP_PASSENGER) ? "Back to Flights" : "Back"}
+        {step === (isReturn ? STEP_OUTBOUND : needsCabinSel ? STEP_CABIN_SEL : STEP_PASSENGER) ? "Back to Flights" : "Back"}
       </button>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -656,6 +664,39 @@ export function BookFlightPage() {
                 <div className="flex gap-3">
                   <button onClick={handleBack} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
                   <button onClick={handleNext} className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">Choose Return Flight →</button>
+                </div>
+              </div>
+            )}
+
+            {/* ═══════════════════════════════════════════════════════════
+                Step: Cabin selection (one-way + any cabin)
+            ═══════════════════════════════════════════════════════════ */}
+            {needsCabinSel && step === STEP_CABIN_SEL && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Select Cabin Class</h2>
+                  <p className="mt-1 text-sm text-gray-400">Choose your preferred cabin for this flight.</p>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {(["economy", "business", "first"] as const).map((c) => {
+                    const price = prices[c]; const avail = seats[c]; const unavail = avail === 0 || price === 0;
+                    return (
+                      <button key={c} type="button" disabled={unavail} onClick={() => setCabin(c)}
+                        className={`rounded-xl border p-3.5 text-left transition-colors ${unavail ? "border-gray-100 bg-gray-50 opacity-40 cursor-not-allowed" : cabin === c ? "border-blue-500 bg-blue-50 shadow-sm" : "border-gray-200 hover:border-blue-300"}`}>
+                        <p className={`text-[10px] font-bold uppercase tracking-widest ${cabin === c && !unavail ? "text-blue-500" : "text-gray-400"}`}>
+                          {c === "first" ? "First" : c === "business" ? "Business" : "Economy"}
+                        </p>
+                        <p className={`mt-1 text-xl font-bold tabular-nums ${cabin === c && !unavail ? "text-blue-700" : "text-gray-800"}`}>${price.toFixed(0)}</p>
+                        <p className={`mt-0.5 text-xs ${avail < 10 && !unavail ? "font-medium text-amber-500" : "text-gray-400"}`}>
+                          {unavail ? "Unavailable" : `${avail} seat${avail !== 1 ? "s" : ""} left`}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={handleBack} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Back to Flights</button>
+                  <button onClick={handleNext} className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">Continue →</button>
                 </div>
               </div>
             )}

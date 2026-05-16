@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { flightClient, bookingClient } from "../api/client";
+import { flightClient, bookingClient, baggageClient } from "../api/client";
 import { AIRPORTS } from "../components/AirportCombobox";
 
 interface Flight {
@@ -32,6 +32,17 @@ interface Booking {
   created_at: string;
 }
 
+interface BaggageItem {
+  id: string;
+  tag_number: string;
+  booking_id: string;
+  passenger_name: string;
+  weight_kg: number;
+  status: string;
+  last_location: string | null;
+  description: string | null;
+}
+
 const STATUS_STYLE: Record<string, { bg: string; text: string; border: string }> = {
   scheduled:  { bg: "bg-blue-50",    text: "text-blue-700",   border: "border-blue-200"   },
   boarding:   { bg: "bg-amber-50",   text: "text-amber-700",  border: "border-amber-200"  },
@@ -41,6 +52,19 @@ const STATUS_STYLE: Record<string, { bg: string; text: string; border: string }>
   arrived:    { bg: "bg-emerald-50", text: "text-emerald-700",border: "border-emerald-200"},
   delayed:    { bg: "bg-orange-50",  text: "text-orange-700", border: "border-orange-200" },
   cancelled:  { bg: "bg-red-50",     text: "text-red-600",    border: "border-red-200"    },
+};
+
+const BAGGAGE_STATUS_STYLE: Record<string, string> = {
+  registered:       "bg-gray-100   text-gray-600   border-gray-200",
+  checked_in:       "bg-blue-50    text-blue-700   border-blue-200",
+  security_cleared: "bg-indigo-50  text-indigo-700 border-indigo-200",
+  loaded:           "bg-violet-50  text-violet-700 border-violet-200",
+  in_transit:       "bg-amber-50   text-amber-700  border-amber-200",
+  arrived:          "bg-emerald-50 text-emerald-700 border-emerald-200",
+  on_carousel:      "bg-teal-50    text-teal-700   border-teal-200",
+  collected:        "bg-emerald-50 text-emerald-700 border-emerald-200",
+  lost:             "bg-red-50     text-red-600    border-red-200",
+  found:            "bg-orange-50  text-orange-700 border-orange-200",
 };
 
 const BOOKING_STATUS_STYLE: Record<string, string> = {
@@ -101,8 +125,17 @@ export function AdminDashboardPage() {
     },
   });
 
+  const { data: baggageData = [] } = useQuery<BaggageItem[]>({
+    queryKey: ["admin-baggage"],
+    queryFn: async () => {
+      const { data } = await (baggageClient as any).GET("/api/v1/baggage", {});
+      return (data as BaggageItem[]) ?? [];
+    },
+  });
+
   const flights  = flightData?.items ?? [];
   const bookings = bookingData;
+  const baggage  = baggageData;
 
   // Flight metrics
   const totalFlights    = flights.length;
@@ -127,6 +160,18 @@ export function AdminDashboardPage() {
 
   const bookingGroups = Object.entries(
     bookings.reduce<Record<string, number>>((acc, b) => {
+      acc[b.status] = (acc[b.status] ?? 0) + 1;
+      return acc;
+    }, {})
+  );
+
+  // Baggage metrics
+  const totalBaggage   = baggage.length;
+  const lostBaggage    = baggage.filter(b => b.status === "lost").length;
+  const inTransit      = baggage.filter(b => ["in_transit", "loaded", "checked_in", "security_cleared"].includes(b.status)).length;
+  const totalWeight    = baggage.reduce((s, b) => s + b.weight_kg, 0);
+  const baggageGroups  = Object.entries(
+    baggage.reduce<Record<string, number>>((acc, b) => {
       acc[b.status] = (acc[b.status] ?? 0) + 1;
       return acc;
     }, {})
@@ -251,6 +296,31 @@ export function AdminDashboardPage() {
           <div className="flex flex-wrap gap-3">
             {bookingGroups.map(([status, count]) => {
               const style = BOOKING_STATUS_STYLE[status] ?? "bg-gray-100 text-gray-500 border-gray-200";
+              return (
+                <div key={status} className={`rounded-xl border px-4 py-3 min-w-[120px] ${style}`}>
+                  <p className="text-xs font-bold uppercase tracking-wide opacity-80">{status.replace(/_/g, " ")}</p>
+                  <p className="text-2xl font-bold tabular-nums mt-1">{count}</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Baggage metrics */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Total Bags"     value={totalBaggage}                                                                          sub="all registered bags"   color="blue"   />
+        <StatCard label="In Transit"     value={inTransit}                                                                             sub="checked in or loading" color="violet" />
+        <StatCard label="Total Weight"   value={`${totalWeight.toLocaleString("en-US", { maximumFractionDigits: 0 })} kg`}            sub="across all bags"       color="green"  />
+        <StatCard label="Lost Bags"      value={lostBaggage}                                                                           sub="require attention"     color="red"    />
+      </div>
+
+      {baggageGroups.length > 0 && (
+        <div className="rounded-2xl bg-white border border-gray-100 shadow-sm p-6">
+          <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-4">Baggage Status Breakdown</h3>
+          <div className="flex flex-wrap gap-3">
+            {baggageGroups.map(([status, count]) => {
+              const style = BAGGAGE_STATUS_STYLE[status] ?? "bg-gray-100 text-gray-500 border-gray-200";
               return (
                 <div key={status} className={`rounded-xl border px-4 py-3 min-w-[120px] ${style}`}>
                   <p className="text-xs font-bold uppercase tracking-wide opacity-80">{status.replace(/_/g, " ")}</p>

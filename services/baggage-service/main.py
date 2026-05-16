@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
-from shared.auth import get_current_user
+from shared.auth import get_current_user, RoleChecker
 from shared.events import EventPublisher
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
@@ -81,6 +81,16 @@ app = FastAPI(title="AeroLink Baggage Service", version="1.0.0", lifespan=lifesp
 async def health():
     return HealthResponse(service="baggage-service", uptime_seconds=time.time() - START_TIME,
                           dependencies={"database": "healthy"})
+
+
+@app.get("/api/v1/baggage", response_model=list[BaggageResponse])
+async def list_all_baggage(
+    current_user: dict = Depends(RoleChecker(["admin", "airline-staff"])),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin endpoint: return all baggage items across all passengers."""
+    result = await db.execute(select(Baggage).order_by(Baggage.created_at.desc()))
+    return [_to_response(b) for b in result.scalars().all()]
 
 
 @app.post("/api/v1/baggage", response_model=BaggageResponse, status_code=201)

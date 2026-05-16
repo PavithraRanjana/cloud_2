@@ -19,6 +19,7 @@ from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventConsumer
+from shared.cache import create_redis_client, redis_set_nx
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Notification, NotificationType, NotificationStatus
@@ -36,6 +37,10 @@ SessionFactory = create_session_factory(engine)
 _sync_db_url = config.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
 _sync_engine = create_engine(_sync_db_url)
 SyncSessionFactory = sessionmaker(bind=_sync_engine)
+
+# Redis for deduplication — prevents double-send when SQS redelivers a message
+redis_client = create_redis_client(config.redis_url)
+DEDUP_TTL = 300  # 5-minute dedup window (SQS visibility timeout default is 30s)
 
 START_TIME = time.time()
 
@@ -202,6 +207,12 @@ def process_event(event_body: dict):
         logger.warning("no_recipient_email_in_event", detail_type=detail_type)
         return
 
+    # Deduplication: skip if we already processed this event+recipient within the window
+    dedup_key = f"notif:dedup:{detail_type}:{recipient_email}"
+    if not redis_set_nx(redis_client, dedup_key, "1", DEDUP_TTL):
+        logger.info("notification_deduplicated", event_type=detail_type, recipient=recipient_email)
+        return
+
     try:
         with SyncSessionFactory() as session:
             notification = Notification(
@@ -253,7 +264,8 @@ def poll_events():
 async def health():
     return HealthResponse(service="notification-service",
                           uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy", "sqs": "healthy"})
+                          dependencies={"database": "healthy", "sqs": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.post("/api/v1/notifications", response_model=NotificationResponse, status_code=201)

@@ -18,6 +18,7 @@ from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventPublisher
+from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import CheckIn, CheckInStatus
@@ -44,6 +45,10 @@ except Exception:
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+redis_client = create_redis_client(config.redis_url)
+CHECKIN_CACHE_TTL  = 3600  # check-in record — 1 hour (immutable once issued)
+PDF_URL_CACHE_TTL  = 3300  # presigned URL — cache for 55 min (URL expires at 60 min)
 
 event_publisher = None
 try:
@@ -113,7 +118,8 @@ app = FastAPI(title="AeroLink Check-In Service", version="1.0.0", lifespan=lifes
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="checkin-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy"})
+                          dependencies={"database": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.post("/api/v1/checkin", response_model=CheckInResponse, status_code=201)
@@ -139,6 +145,9 @@ async def check_in(data: CheckInRequest,
     db.add(checkin)
     await db.flush()
     await db.refresh(checkin)
+
+    # Cache the new check-in record
+    redis_set_json(redis_client, f"checkin:{data.booking_id}", _to_response(checkin).dict(), CHECKIN_CACHE_TTL)
 
     # Update booking status via saga
     try:
@@ -169,11 +178,16 @@ async def check_in(data: CheckInRequest,
 
 @app.get("/api/v1/checkin/{booking_id}", response_model=CheckInResponse)
 async def get_checkin(booking_id: str, db: AsyncSession = Depends(get_db)):
+    cached = redis_get_json(redis_client, f"checkin:{booking_id}")
+    if cached is not None:
+        return cached
     result = await db.execute(select(CheckIn).where(CheckIn.booking_id == booking_id))
     checkin = result.scalar_one_or_none()
     if not checkin:
         raise HTTPException(status_code=404, detail="Check-in not found")
-    return _to_response(checkin)
+    data = _to_response(checkin).dict()
+    redis_set_json(redis_client, f"checkin:{booking_id}", data, CHECKIN_CACHE_TTL)
+    return data
 
 
 @app.get("/api/v1/checkin/{booking_id}/boarding-pass", response_class=HTMLResponse)
@@ -413,12 +427,19 @@ async def get_boarding_pass_pdf(
     except Exception:
         raise HTTPException(status_code=404, detail="PDF boarding pass not yet generated")
 
+    pdf_cache_key = f"pdf_url:{booking_id}"
+    cached_url = redis_get_json(redis_client, pdf_cache_key)
+    if cached_url is not None:
+        return cached_url
+
     url = _s3.generate_presigned_url(
         "get_object",
         Params={"Bucket": S3_BUCKET, "Key": s3_key},
         ExpiresIn=3600,
     )
-    return {"url": url, "expires_in": 3600}
+    result_payload = {"url": url, "expires_in": 3600}
+    redis_set_json(redis_client, pdf_cache_key, result_payload, PDF_URL_CACHE_TTL)
+    return result_payload
 
 
 if __name__ == "__main__":

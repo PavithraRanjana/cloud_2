@@ -16,6 +16,7 @@ from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventPublisher
 from shared.resilience import create_circuit_breaker
+from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete, redis_set_nx
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Booking, BookingStatus
@@ -27,6 +28,11 @@ setup_logging(config.service_name)
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+redis_client = create_redis_client(config.redis_url)
+
+SEAT_LOCK_TTL    = 15   # seconds — long enough to complete the HTTP + DB round-trip
+BOOKINGS_LIST_TTL = 60  # seconds — short enough to feel live
 
 flight_breaker = create_circuit_breaker("flight-service")
 payment_breaker = create_circuit_breaker("payment-service")
@@ -111,100 +117,115 @@ app = FastAPI(title="AeroLink Booking Service", version="1.0.0", lifespan=lifesp
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="booking-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy", "flight-service": "healthy"})
+                          dependencies={"database": "healthy", "flight-service": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.post("/api/v1/bookings", response_model=BookingResponse, status_code=201)
 async def create_booking(data: BookingCreate,
                          current_user: dict = Depends(get_current_user),
                          db: AsyncSession = Depends(get_db)):
-    # Step 1: Check flight availability
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(f"{config.flight_service_url}/api/v1/flights/{data.flight_id}")
-        if resp.status_code == 404:
-            raise HTTPException(status_code=404, detail="Flight not found")
-        resp.raise_for_status()
-        flight = resp.json()
+    # Distributed seat lock: prevent double-booking the same flight+cabin concurrently
+    lock_key = f"seat_lock:{data.flight_id}:{data.cabin_class}"
+    acquired = redis_set_nx(redis_client, lock_key, current_user["sub"], SEAT_LOCK_TTL)
+    if not acquired:
+        raise HTTPException(status_code=409, detail="Seat reservation in progress for this flight. Please try again.")
 
-    available_key = f"available_seats_{data.cabin_class}"
-    if flight.get(available_key, 0) < data.num_passengers:
-        raise HTTPException(status_code=409, detail=f"Not enough {data.cabin_class} seats available")
+    try:
+        # Step 1: Check flight availability
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(f"{config.flight_service_url}/api/v1/flights/{data.flight_id}")
+            if resp.status_code == 404:
+                raise HTTPException(status_code=404, detail="Flight not found")
+            resp.raise_for_status()
+            flight = resp.json()
 
-    # Step 2: Reserve seats
-    price_key = f"price_{data.cabin_class}"
-    total_price = flight.get(price_key, 0) * data.num_passengers
+        available_key = f"available_seats_{data.cabin_class}"
+        if flight.get(available_key, 0) < data.num_passengers:
+            raise HTTPException(status_code=409, detail=f"Not enough {data.cabin_class} seats available")
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        seat_resp = await client.put(
-            f"{config.flight_service_url}/api/v1/flights/{data.flight_id}/seats",
-            json={"cabin_class": data.cabin_class, "change": -data.num_passengers}
+        # Step 2: Reserve seats
+        price_key = f"price_{data.cabin_class}"
+        total_price = flight.get(price_key, 0) * data.num_passengers
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            seat_resp = await client.put(
+                f"{config.flight_service_url}/api/v1/flights/{data.flight_id}/seats",
+                json={"cabin_class": data.cabin_class, "change": -data.num_passengers}
+            )
+            if seat_resp.status_code == 409:
+                raise HTTPException(status_code=409, detail="Seats no longer available (concurrent booking)")
+            seat_resp.raise_for_status()
+
+        # Step 3: Create booking record
+        import uuid as _uuid
+        group_id = _uuid.UUID(data.group_booking_id) if data.group_booking_id else None
+        booking = Booking(
+            booking_reference=generate_booking_ref(),
+            user_id=current_user["sub"],
+            flight_id=data.flight_id,
+            passenger_name=data.passenger_name,
+            passenger_email=data.passenger_email,
+            cabin_class=data.cabin_class,
+            num_passengers=data.num_passengers,
+            total_price=total_price,
+            status=BookingStatus.PENDING,
+            special_requests=data.special_requests,
+            trip_type=data.trip_type,
+            group_booking_id=group_id,
+            seat_numbers=data.seat_number,
+            title=data.title,
+            gender=data.gender,
+            first_name=data.first_name,
+            middle_name=data.middle_name,
+            last_name=data.last_name,
+            date_of_birth=data.date_of_birth,
+            nationality=data.nationality,
+            passport_number=data.passport_number,
+            passport_expiry=data.passport_expiry,
+            country_code=data.country_code,
+            phone_number=data.phone_number,
         )
-        if seat_resp.status_code == 409:
-            raise HTTPException(status_code=409, detail="Seats no longer available (concurrent booking)")
-        seat_resp.raise_for_status()
+        db.add(booking)
+        await db.flush()
+        await db.refresh(booking)
 
-    # Step 3: Create booking record
-    import uuid as _uuid
-    group_id = _uuid.UUID(data.group_booking_id) if data.group_booking_id else None
-    booking = Booking(
-        booking_reference=generate_booking_ref(),
-        user_id=current_user["sub"],
-        flight_id=data.flight_id,
-        passenger_name=data.passenger_name,
-        passenger_email=data.passenger_email,
-        cabin_class=data.cabin_class,
-        num_passengers=data.num_passengers,
-        total_price=total_price,
-        status=BookingStatus.PENDING,
-        special_requests=data.special_requests,
-        trip_type=data.trip_type,
-        group_booking_id=group_id,
-        seat_numbers=data.seat_number,
-        # Passenger identity
-        title=data.title,
-        gender=data.gender,
-        first_name=data.first_name,
-        middle_name=data.middle_name,
-        last_name=data.last_name,
-        date_of_birth=data.date_of_birth,
-        nationality=data.nationality,
-        passport_number=data.passport_number,
-        passport_expiry=data.passport_expiry,
-        # Contact
-        country_code=data.country_code,
-        phone_number=data.phone_number,
-    )
-    db.add(booking)
-    await db.flush()
-    await db.refresh(booking)
+        # Step 4: Emit BookingCreated event
+        if event_publisher:
+            try:
+                event_publisher.publish("booking-service", "BookingCreated", {
+                    "booking_id": str(booking.id),
+                    "booking_reference": booking.booking_reference,
+                    "user_id": str(booking.user_id),
+                    "flight_id": str(booking.flight_id),
+                    "passenger_name": booking.passenger_name,
+                    "passenger_email": booking.passenger_email,
+                    "total_price": booking.total_price,
+                    "cabin_class": booking.cabin_class,
+                })
+            except Exception:
+                pass
 
-    # Step 4: Emit BookingCreated event
-    if event_publisher:
-        try:
-            event_publisher.publish("booking-service", "BookingCreated", {
-                "booking_id": str(booking.id),
-                "booking_reference": booking.booking_reference,
-                "user_id": str(booking.user_id),
-                "flight_id": str(booking.flight_id),
-                "passenger_name": booking.passenger_name,
-                "passenger_email": booking.passenger_email,
-                "total_price": booking.total_price,
-                "cabin_class": booking.cabin_class,
-            })
-        except Exception:
-            pass
+        # Invalidate booking list cache for this user
+        redis_delete(redis_client, f"bookings:{current_user['sub']}", "bookings:admin")
 
-    return _to_response(booking)
+        return _to_response(booking)
+    finally:
+        redis_delete(redis_client, lock_key)
 
 
 @app.get("/api/v1/bookings", response_model=list[BookingResponse])
 async def list_bookings(current_user: dict = Depends(get_current_user),
                         db: AsyncSession = Depends(get_db)):
-    if current_user.get("role") == "admin":
-        # Return only bookings made by passenger-role users
-        passenger_ids = text(
-            "SELECT id FROM users WHERE role::text = 'PASSENGER'"
-        )
+    is_admin = current_user.get("role") == "admin"
+    cache_key = "bookings:admin" if is_admin else f"bookings:{current_user['sub']}"
+
+    cached = redis_get_json(redis_client, cache_key)
+    if cached is not None:
+        return cached
+
+    if is_admin:
+        passenger_ids = text("SELECT id FROM users WHERE role::text = 'PASSENGER'")
         result_ids = await db.execute(passenger_ids)
         passenger_user_ids = [str(row[0]) for row in result_ids.fetchall()]
         query = (
@@ -219,7 +240,9 @@ async def list_bookings(current_user: dict = Depends(get_current_user),
             .order_by(Booking.created_at.desc())
         )
     result = await db.execute(query)
-    return [_to_response(b) for b in result.scalars().all()]
+    bookings = [_to_response(b).dict() for b in result.scalars().all()]
+    redis_set_json(redis_client, cache_key, bookings, BOOKINGS_LIST_TTL)
+    return bookings
 
 
 # NOTE: this must be defined BEFORE /{booking_id} to avoid path shadowing
@@ -307,6 +330,9 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(get_curre
     booking.status = BookingStatus.CANCELLED
     await db.flush()
     await db.refresh(booking)
+
+    # Bust cache for this user and admin
+    redis_delete(redis_client, f"bookings:{current_user['sub']}", "bookings:admin")
 
     if event_publisher:
         try:

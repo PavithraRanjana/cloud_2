@@ -14,6 +14,7 @@ from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user, RoleChecker
 from shared.events import EventPublisher
+from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Baggage, BaggageStatus
@@ -25,6 +26,10 @@ setup_logging(config.service_name)
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+redis_client = create_redis_client(config.redis_url)
+TAG_CACHE_TTL   = 300  # baggage status — 5 min, invalidated on update
+ADMIN_CACHE_TTL = 30   # admin list — 30 sec (staff need fresher data)
 
 event_publisher = None
 try:
@@ -80,7 +85,8 @@ app = FastAPI(title="AeroLink Baggage Service", version="1.0.0", lifespan=lifesp
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="baggage-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy"})
+                          dependencies={"database": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.get("/api/v1/baggage", response_model=list[BaggageResponse])
@@ -89,8 +95,13 @@ async def list_all_baggage(
     db: AsyncSession = Depends(get_db),
 ):
     """Admin endpoint: return all baggage items across all passengers."""
+    cached = redis_get_json(redis_client, "baggage:admin")
+    if cached is not None:
+        return cached
     result = await db.execute(select(Baggage).order_by(Baggage.created_at.desc()))
-    return [_to_response(b) for b in result.scalars().all()]
+    items = [_to_response(b).dict() for b in result.scalars().all()]
+    redis_set_json(redis_client, "baggage:admin", items, ADMIN_CACHE_TTL)
+    return items
 
 
 @app.post("/api/v1/baggage", response_model=BaggageResponse, status_code=201)
@@ -110,6 +121,9 @@ async def register_baggage(data: BaggageRegister,
     await db.flush()
     await db.refresh(baggage)
 
+    # New baggage busts the admin list cache
+    redis_delete(redis_client, "baggage:admin")
+
     if event_publisher:
         try:
             event_publisher.publish("baggage-service", "BaggageRegistered", {
@@ -127,11 +141,17 @@ async def register_baggage(data: BaggageRegister,
 
 @app.get("/api/v1/baggage/{tag_number}", response_model=BaggageResponse)
 async def track_baggage(tag_number: str, db: AsyncSession = Depends(get_db)):
+    cache_key = f"baggage:tag:{tag_number}"
+    cached = redis_get_json(redis_client, cache_key)
+    if cached is not None:
+        return cached
     result = await db.execute(select(Baggage).where(Baggage.tag_number == tag_number))
     baggage = result.scalar_one_or_none()
     if not baggage:
         raise HTTPException(status_code=404, detail="Baggage not found")
-    return _to_response(baggage)
+    data = _to_response(baggage).dict()
+    redis_set_json(redis_client, cache_key, data, TAG_CACHE_TTL)
+    return data
 
 
 @app.get("/api/v1/baggage/booking/{booking_id}", response_model=list[BaggageResponse])
@@ -153,6 +173,9 @@ async def update_baggage_status(tag_number: str, data: BaggageStatusUpdate,
         baggage.last_location = data.location
     await db.flush()
     await db.refresh(baggage)
+
+    # Bust tag cache and admin list cache on status change
+    redis_delete(redis_client, f"baggage:tag:{tag_number}", "baggage:admin")
 
     if event_publisher:
         try:

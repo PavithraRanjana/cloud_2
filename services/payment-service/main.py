@@ -19,6 +19,7 @@ from shared.auth import get_current_user
 from shared.events import EventPublisher
 from shared.encryption import tokenize_card, mask_card_number
 from shared.audit import AuditLog, record_audit
+from shared.cache import create_redis_client, redis_set_nx, redis_get_json, redis_set_json
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Payment, PaymentStatus, PaymentMethod
@@ -31,6 +32,9 @@ logger = structlog.get_logger()
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+redis_client = create_redis_client(config.redis_url)
+IDEMPOTENCY_TTL = 86400  # 24 hours — matches DynamoDB TTL
 
 event_publisher = None
 try:
@@ -140,14 +144,21 @@ def simulate_payment_processing() -> tuple[bool, str]:
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="payment-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy"})
+                          dependencies={"database": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.post("/api/v1/payments", response_model=PaymentResponse, status_code=201)
 async def process_payment(data: PaymentCreate, request: Request,
                           current_user: dict = Depends(get_current_user),
                           db: AsyncSession = Depends(get_db)):
-    # Idempotency fast-path: DynamoDB pre-check (avoids PostgreSQL hit for dupes)
+    # Idempotency fast-path: Redis (fastest) → DynamoDB → PostgreSQL
+    redis_idem_key = f"idem:{data.idempotency_key}"
+    cached_payment = redis_get_json(redis_client, redis_idem_key)
+    if cached_payment is not None:
+        return cached_payment
+
+    # DynamoDB pre-check (avoids PostgreSQL hit for dupes)
     if _dynamo_check(data.idempotency_key):
         existing = await db.execute(
             select(Payment).where(Payment.idempotency_key == data.idempotency_key))
@@ -222,7 +233,9 @@ async def process_payment(data: PaymentCreate, request: Request,
     if success:
         payment.status = PaymentStatus.COMPLETED
         payment.transaction_ref = result
-        # Record in DynamoDB so future duplicate requests hit the fast-path
+        # Record in Redis (fastest) and DynamoDB for idempotency
+        response_data = _to_response(payment)
+        redis_set_json(redis_client, redis_idem_key, response_data.dict(), IDEMPOTENCY_TTL)
         _dynamo_record(data.idempotency_key, str(payment.id))
 
         # Audit: payment succeeded

@@ -5,7 +5,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from shared.config import BaseConfig
@@ -13,6 +13,7 @@ from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import (hash_password, verify_password, create_access_token,
                          create_refresh_token, decode_token, get_current_user)
 from shared.audit import AuditLog, record_audit
+from shared.cache import create_redis_client, redis_incr_with_ttl, redis_delete
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import User, UserRole, generate_api_key
@@ -25,6 +26,11 @@ setup_logging(config.service_name)
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+redis_client = create_redis_client(config.redis_url)
+
+LOGIN_FAIL_TTL   = 300   # 5-minute sliding window
+LOGIN_FAIL_LIMIT = 10    # block after 10 failures within the window
 
 
 async def get_db():
@@ -51,6 +57,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AeroLink Auth Service", version="1.0.0", lifespan=lifespan)
 
 
+def _rate_limit_key(username: str) -> str:
+    return f"login_fail:{username}"
+
+
 def _to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=str(user.id), email=user.email, username=user.username,
@@ -65,7 +75,8 @@ def _to_user_response(user: User) -> UserResponse:
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="auth-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy"})
+                          dependencies={"database": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.post("/api/v1/auth/register", response_model=UserResponse, status_code=201)
@@ -97,13 +108,25 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 
 @app.post("/api/v1/auth/login", response_model=TokenResponse)
-async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(get_db)):
+    fail_key = _rate_limit_key(data.username)
+    try:
+        current_fails = int(redis_client.get(fail_key) or 0) if redis_client else 0
+    except Exception:
+        current_fails = 0
+    if current_fails >= LOGIN_FAIL_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many failed login attempts. Try again in 5 minutes.")
+
     result = await db.execute(select(User).where(User.username == data.username))
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.hashed_password):
+        redis_incr_with_ttl(redis_client, fail_key, LOGIN_FAIL_TTL)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
+
+    # Successful login: clear the failure counter
+    redis_delete(redis_client, fail_key)
 
     # Include ABAC attributes in JWT claims
     token_data = {

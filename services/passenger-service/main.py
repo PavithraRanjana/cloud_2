@@ -15,6 +15,7 @@ from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.encryption import encrypt_field, decrypt_field
 from shared.audit import AuditLog, record_audit
+from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import PassengerProfile, GDPRConsent
@@ -27,6 +28,9 @@ setup_logging(config.service_name)
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+redis_client = create_redis_client(config.redis_url)
+PROFILE_CACHE_TTL = 300  # 5 minutes; invalidated on update or loyalty award
 
 
 async def get_db():
@@ -82,7 +86,8 @@ app = FastAPI(title="AeroLink Passenger Service", version="1.0.0", lifespan=life
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="passenger-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy"})
+                          dependencies={"database": "healthy",
+                                        "redis": "healthy" if redis_client else "unavailable"})
 
 
 @app.post("/api/v1/passengers/profile", response_model=ProfileResponse, status_code=201)
@@ -113,18 +118,26 @@ async def create_profile(data: ProfileCreate,
     db.add(profile)
     await db.flush()
     await db.refresh(profile)
-    return _to_response(profile)
+    response = _to_response(profile)
+    redis_set_json(redis_client, f"profile:{current_user['sub']}", response.dict(), PROFILE_CACHE_TTL)
+    return response
 
 
 @app.get("/api/v1/passengers/profile", response_model=ProfileResponse)
 async def get_profile(current_user: dict = Depends(get_current_user),
                       db: AsyncSession = Depends(get_db)):
+    cache_key = f"profile:{current_user['sub']}"
+    cached = redis_get_json(redis_client, cache_key)
+    if cached is not None:
+        return cached
     result = await db.execute(
         select(PassengerProfile).where(PassengerProfile.user_id == current_user["sub"]))
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    return _to_response(profile)
+    data = _to_response(profile).dict()
+    redis_set_json(redis_client, cache_key, data, PROFILE_CACHE_TTL)
+    return data
 
 
 @app.put("/api/v1/passengers/profile", response_model=ProfileResponse)
@@ -146,7 +159,9 @@ async def update_profile(data: ProfileUpdate,
         setattr(profile, key, value)
     await db.flush()
     await db.refresh(profile)
-    return _to_response(profile)
+    response = _to_response(profile)
+    redis_set_json(redis_client, f"profile:{current_user['sub']}", response.dict(), PROFILE_CACHE_TTL)
+    return response
 
 
 TIER_THRESHOLDS = [
@@ -186,6 +201,10 @@ async def award_loyalty_points(
     profile.loyalty_tier   = _tier_for(profile.loyalty_points)
     await db.flush()
     await db.refresh(profile)
+
+    # Bust profile cache — loyalty data changed
+    redis_delete(redis_client, f"profile:{user_id}")
+
     return {
         "user_id": user_id,
         "points_awarded": points,
@@ -230,6 +249,7 @@ async def delete_profile(request: Request,
         except Exception:
             pass  # Best-effort cascade
 
+    redis_delete(redis_client, f"profile:{current_user['sub']}")
     await db.delete(profile)
 
 

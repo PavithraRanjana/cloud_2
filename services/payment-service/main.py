@@ -242,6 +242,17 @@ async def process_payment(data: PaymentCreate, request: Request,
         except Exception:
             pass
 
+        # Award loyalty points: 10 pts per $1 spent (best-effort, non-blocking)
+        loyalty_points = max(1, int(data.amount * 10))
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{config.passenger_service_url}/api/v1/passengers/loyalty/award",
+                    json={"user_id": current_user["sub"], "points": loyalty_points},
+                )
+        except Exception:
+            pass
+
         if event_publisher:
             try:
                 event_publisher.publish("payment-service", "PaymentCompleted", {
@@ -253,6 +264,7 @@ async def process_payment(data: PaymentCreate, request: Request,
                     "transaction_ref": result,
                     "passenger_email": current_user.get("email", ""),
                     "passenger_name": current_user.get("username", ""),
+                    "loyalty_points_awarded": loyalty_points,
                 })
             except Exception:
                 pass

@@ -149,6 +149,51 @@ async def update_profile(data: ProfileUpdate,
     return _to_response(profile)
 
 
+TIER_THRESHOLDS = [
+    (10_000, "platinum"),
+    (5_000,  "gold"),
+    (1_000,  "silver"),
+    (0,      "bronze"),
+]
+
+def _tier_for(points: int) -> str:
+    for threshold, tier in TIER_THRESHOLDS:
+        if points >= threshold:
+            return tier
+    return "bronze"
+
+POINTS_PER_DOLLAR = 10  # 10 pts per $1 spent
+
+
+@app.post("/api/v1/passengers/loyalty/award")
+async def award_loyalty_points(
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """Internal endpoint — called by payment-service after successful payment."""
+    user_id = data.get("user_id")
+    points  = int(data.get("points", 0))
+    if not user_id or points <= 0:
+        raise HTTPException(status_code=400, detail="user_id and positive points required")
+
+    result = await db.execute(
+        select(PassengerProfile).where(PassengerProfile.user_id == user_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    profile.loyalty_points = (profile.loyalty_points or 0) + points
+    profile.loyalty_tier   = _tier_for(profile.loyalty_points)
+    await db.flush()
+    await db.refresh(profile)
+    return {
+        "user_id": user_id,
+        "points_awarded": points,
+        "total_points": profile.loyalty_points,
+        "tier": profile.loyalty_tier,
+    }
+
+
 @app.delete("/api/v1/passengers/profile", status_code=204)
 async def delete_profile(request: Request,
                          current_user: dict = Depends(get_current_user),

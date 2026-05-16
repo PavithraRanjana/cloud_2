@@ -213,6 +213,11 @@ function FlightCard({ flight, cabinClass, onBook, isBooking, isAdmin }: FlightCa
             <div className="text-right">
               <p className="text-xl font-bold text-blue-700">${price.toFixed(2)}</p>
               <p className="text-[11px] capitalize font-medium text-blue-400">{priceLabel}</p>
+              {!isAdmin && (
+                <p className="text-[10px] text-amber-600 font-medium mt-0.5">
+                  +{Math.max(1, Math.floor(price * 10)).toLocaleString()} pts
+                </p>
+              )}
             </div>
           )}
           {!isAdmin && (

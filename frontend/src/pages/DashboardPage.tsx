@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { bookingClient, notificationClient, flightClient } from "../api/client";
+import { bookingClient, notificationClient, flightClient, passengerClient } from "../api/client";
 import { AdminDashboardPage } from "./AdminDashboardPage";
 
 interface Booking {
@@ -23,6 +23,11 @@ interface Flight {
   departure_time: string;
   airline: string;
   gate: string | null;
+}
+
+interface Profile {
+  loyalty_tier: string;
+  loyalty_points: number;
 }
 
 interface Notification {
@@ -50,6 +55,13 @@ function timeAgo(iso: string) {
   if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
+
+const TIER_CONFIG: Record<string, { label: string; color: string; next: string | null; nextAt: number }> = {
+  bronze:   { label: "Bronze",   color: "from-amber-700 to-amber-500",    next: "Silver",   nextAt: 1_000  },
+  silver:   { label: "Silver",   color: "from-slate-500 to-slate-400",    next: "Gold",     nextAt: 5_000  },
+  gold:     { label: "Gold",     color: "from-yellow-500 to-yellow-400",  next: "Platinum", nextAt: 10_000 },
+  platinum: { label: "Platinum", color: "from-violet-600 to-violet-400",  next: null,       nextAt: 0      },
+};
 
 const STATUS_STYLE: Record<string, string> = {
   confirmed:    "bg-blue-50   text-blue-700   border-blue-200",
@@ -158,6 +170,15 @@ export function DashboardPage() {
     },
   });
 
+  const { data: profile } = useQuery<Profile>({
+    queryKey: ["passenger-profile"],
+    queryFn: async () => {
+      const { data } = await passengerClient.GET("/api/v1/passengers/profile", {});
+      return data as Profile;
+    },
+    retry: false,
+  });
+
   const activeBookings = bookings.filter((b) => !["cancelled"].includes(b.status.toLowerCase()));
   const nextFlight     = activeBookings.find((b) => ["confirmed","paid","checked-in"].includes(b.status.toLowerCase()));
   const totalSpent     = bookings
@@ -167,10 +188,17 @@ export function DashboardPage() {
   const recentNotifs   = notifications.slice(0, 4);
 
   const stats = [
-    { label: "Total Bookings",  value: bookings.length,        sub: `${activeBookings.length} active` },
+    { label: "Total Bookings",  value: bookings.length,             sub: `${activeBookings.length} active` },
     { label: "Total Spent",     value: `$${totalSpent.toFixed(0)}`, sub: "USD" },
-    { label: "Notifications",   value: unreadCount,            sub: unreadCount === 1 ? "unread" : "unread", link: "/notifications" },
+    { label: "Notifications",   value: unreadCount,                 sub: "unread", link: "/notifications" },
   ];
+
+  const tier       = profile ? (TIER_CONFIG[profile.loyalty_tier] ?? TIER_CONFIG.bronze) : null;
+  const pts        = profile?.loyalty_points ?? 0;
+  const ptsToNext  = tier?.next ? Math.max(0, tier.nextAt - pts) : 0;
+  const progress   = tier?.next
+    ? Math.min(100, Math.round((pts / tier.nextAt) * 100))
+    : 100;
 
   const quickActions = [
     { to: "/flights",       label: "Search Flights", icon: (
@@ -228,6 +256,34 @@ export function DashboardPage() {
           </div>
         ))}
       </div>
+
+      {/* Loyalty card */}
+      {profile && tier && (
+        <div className={`rounded-2xl bg-gradient-to-r ${tier.color} p-5 text-white shadow-md`}>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest opacity-80">AeroLink Loyalty</p>
+              <p className="text-2xl font-bold mt-0.5">{tier.label} Member</p>
+            </div>
+            <div className="text-right">
+              <p className="text-3xl font-bold tabular-nums">{pts.toLocaleString()}</p>
+              <p className="text-xs opacity-80 mt-0.5">points</p>
+            </div>
+          </div>
+          {tier.next ? (
+            <>
+              <div className="w-full bg-white/20 rounded-full h-2 mb-1.5">
+                <div className="bg-white h-2 rounded-full transition-all" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="text-xs opacity-80">
+                {ptsToNext.toLocaleString()} pts to {tier.next} · Earn 10 pts per $1 spent
+              </p>
+            </>
+          ) : (
+            <p className="text-xs opacity-80">You're at the highest tier · Earn 10 pts per $1 spent</p>
+          )}
+        </div>
+      )}
 
       {/* Next flight */}
       {nextFlight && <NextFlightCard booking={nextFlight} />}

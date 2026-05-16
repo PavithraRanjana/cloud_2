@@ -53,24 +53,40 @@ const EMPTY_CREATE = {
 function EditPanel({ flight, onClose }: { flight: Flight; onClose: () => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState({
-    status:         flight.status,
-    gate:           flight.gate   ?? "",
-    terminal:       flight.terminal ?? "",
+    flight_number:  flight.flight_number,
+    airline:        flight.airline,
+    origin:         flight.origin,
+    destination:    flight.destination,
+    departure_date: flight.departure_date,
+    arrival_date:   flight.arrival_date,
     departure_time: flight.departure_time.slice(0, 5),
     arrival_time:   flight.arrival_time.slice(0, 5),
+    aircraft_type:  flight.aircraft_type ?? "",
+    status:         flight.status,
+    gate:           flight.gate     ?? "",
+    terminal:       flight.terminal ?? "",
     price_economy:  flight.price_economy,
     price_business: flight.price_business,
     price_first:    flight.price_first,
   });
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const set = (key: string, value: unknown) => setForm(f => ({ ...f, [key]: value }));
 
   const update = useMutation({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
+        flight_number:  form.flight_number || undefined,
+        airline:        form.airline       || undefined,
+        origin:         form.origin.toUpperCase()      || undefined,
+        destination:    form.destination.toUpperCase() || undefined,
+        departure_date: form.departure_date || undefined,
+        arrival_date:   form.arrival_date   || undefined,
+        departure_time: form.departure_time || undefined,
+        arrival_time:   form.arrival_time   || undefined,
+        aircraft_type:  form.aircraft_type  || undefined,
         status:         form.status,
         gate:           form.gate     || undefined,
         terminal:       form.terminal || undefined,
-        departure_time: form.departure_time || undefined,
-        arrival_time:   form.arrival_time   || undefined,
         price_economy:  form.price_economy,
         price_business: form.price_business,
         price_first:    form.price_first,
@@ -78,58 +94,133 @@ function EditPanel({ flight, onClose }: { flight: Flight; onClose: () => void })
       const { error } = await (flightClient as any).PUT(`/api/v1/flights/${flight.id}`, { body });
       if (error) throw new Error("Update failed");
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["staff-flights"] });
-      onClose();
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["staff-flights"] }); onClose(); },
+  });
+
+  const cancelFlight = useMutation({
+    mutationFn: async () => {
+      const { error } = await (flightClient as any).PUT(`/api/v1/flights/${flight.id}`, {
+        body: { status: "cancelled" },
+      });
+      if (error) throw new Error("Cancel failed");
     },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["staff-flights"] }); onClose(); },
   });
 
   return (
-    <div className="border-t border-gray-100 bg-blue-50/30 px-5 py-4 space-y-4">
+    <div className="border-t border-gray-100 bg-blue-50/30 px-5 py-5 space-y-4">
       <p className="text-sm font-bold text-gray-700">Edit Flight</p>
+
+      {/* Route & identity */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Flight No.</label>
+          <input value={form.flight_number} onChange={e => set("flight_number", e.target.value.toUpperCase())} className={INPUT} placeholder="BA123" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Airline</label>
+          <input value={form.airline} onChange={e => set("airline", e.target.value)} className={INPUT} placeholder="British Airways" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Origin (IATA)</label>
+          <input value={form.origin} onChange={e => set("origin", e.target.value.toUpperCase())} className={INPUT} placeholder="LHR" maxLength={3} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Destination (IATA)</label>
+          <input value={form.destination} onChange={e => set("destination", e.target.value.toUpperCase())} className={INPUT} placeholder="JFK" maxLength={3} />
+        </div>
+      </div>
+
+      {/* Schedule */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Departure Date</label>
+          <input type="date" value={form.departure_date} onChange={e => set("departure_date", e.target.value)} className={INPUT} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Departure Time</label>
+          <input type="time" value={form.departure_time} onChange={e => set("departure_time", e.target.value)} className={INPUT} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Arrival Date</label>
+          <input type="date" value={form.arrival_date} onChange={e => set("arrival_date", e.target.value)} className={INPUT} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Arrival Time</label>
+          <input type="time" value={form.arrival_time} onChange={e => set("arrival_time", e.target.value)} className={INPUT} />
+        </div>
+      </div>
+
+      {/* Operational */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div>
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Aircraft Type</label>
+          <input value={form.aircraft_type} onChange={e => set("aircraft_type", e.target.value)} className={INPUT} placeholder="Boeing 737" />
+        </div>
+        <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Status</label>
-          <select value={form.status} onChange={(e) => setForm(f => ({ ...f, status: e.target.value }))} className={SELECT}>
+          <select value={form.status} onChange={e => set("status", e.target.value)} className={SELECT}>
             {STATUSES.map(s => <option key={s} value={s} className="capitalize">{s}</option>)}
           </select>
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Gate</label>
-          <input value={form.gate} onChange={(e) => setForm(f => ({ ...f, gate: e.target.value }))} className={INPUT} placeholder="e.g. A12" />
+          <input value={form.gate} onChange={e => set("gate", e.target.value)} className={INPUT} placeholder="A12" />
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Terminal</label>
-          <input value={form.terminal} onChange={(e) => setForm(f => ({ ...f, terminal: e.target.value }))} className={INPUT} placeholder="e.g. T2" />
+          <input value={form.terminal} onChange={e => set("terminal", e.target.value)} className={INPUT} placeholder="T2" />
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Dept. Time</label>
-          <input type="time" value={form.departure_time} onChange={(e) => setForm(f => ({ ...f, departure_time: e.target.value }))} className={INPUT} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Arr. Time</label>
-          <input type="time" value={form.arrival_time} onChange={(e) => setForm(f => ({ ...f, arrival_time: e.target.value }))} className={INPUT} />
-        </div>
+      </div>
+
+      {/* Pricing */}
+      <div className="grid grid-cols-3 gap-3">
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Economy $</label>
-          <input type="number" step="0.01" value={form.price_economy} onChange={(e) => setForm(f => ({ ...f, price_economy: parseFloat(e.target.value) }))} className={INPUT} />
+          <input type="number" step="0.01" min={0} value={form.price_economy} onChange={e => set("price_economy", parseFloat(e.target.value))} className={INPUT} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Business $</label>
-          <input type="number" step="0.01" value={form.price_business} onChange={(e) => setForm(f => ({ ...f, price_business: parseFloat(e.target.value) }))} className={INPUT} />
+          <input type="number" step="0.01" min={0} value={form.price_business} onChange={e => set("price_business", parseFloat(e.target.value))} className={INPUT} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">First $</label>
-          <input type="number" step="0.01" value={form.price_first} onChange={(e) => setForm(f => ({ ...f, price_first: parseFloat(e.target.value) }))} className={INPUT} />
+          <input type="number" step="0.01" min={0} value={form.price_first} onChange={e => set("price_first", parseFloat(e.target.value))} className={INPUT} />
         </div>
       </div>
-      {update.isError && <p className="text-xs text-red-500">{update.error instanceof Error ? update.error.message : "Update failed"}</p>}
-      <div className="flex gap-2 pt-1">
-        <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
-        <button onClick={() => update.mutate()} disabled={update.isPending}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
-          {update.isPending ? "Saving…" : "Save Changes"}
-        </button>
+
+      {update.isError    && <p className="text-xs text-red-500">{update.error    instanceof Error ? update.error.message    : "Update failed"}</p>}
+      {cancelFlight.isError && <p className="text-xs text-red-500">{cancelFlight.error instanceof Error ? cancelFlight.error.message : "Cancel failed"}</p>}
+
+      {/* Cancel confirmation */}
+      {showCancelConfirm && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 space-y-3">
+          <p className="text-sm font-semibold text-red-700">Cancel flight {flight.flight_number}?</p>
+          <p className="text-xs text-red-500">This will mark the flight as cancelled. Passengers with bookings should be notified separately.</p>
+          <div className="flex gap-2">
+            <button onClick={() => setShowCancelConfirm(false)} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium hover:bg-gray-50 transition-colors">Keep Flight</button>
+            <button onClick={() => cancelFlight.mutate()} disabled={cancelFlight.isPending}
+              className="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
+              {cancelFlight.isPending ? "Cancelling…" : "Confirm Cancel"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        {flight.status === "scheduled" && !showCancelConfirm && (
+          <button onClick={() => setShowCancelConfirm(true)}
+            className="rounded-lg border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 transition-colors">
+            Cancel Flight
+          </button>
+        )}
+        <div className="flex gap-2 ml-auto">
+          <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium hover:bg-gray-50 transition-colors">Close</button>
+          <button onClick={() => update.mutate()} disabled={update.isPending}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            {update.isPending ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
       </div>
     </div>
   );

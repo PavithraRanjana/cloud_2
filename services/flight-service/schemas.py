@@ -24,11 +24,18 @@ class FlightCreate(BaseModel):
 
 
 class FlightUpdate(BaseModel):
+    flight_number: Optional[str] = Field(None, min_length=2, max_length=10)
+    airline: Optional[str] = None
+    origin: Optional[str] = Field(None, min_length=3, max_length=3)
+    destination: Optional[str] = Field(None, min_length=3, max_length=3)
+    departure_date: Optional[date] = None
+    arrival_date: Optional[date] = None
+    departure_time: Optional[time] = None
+    arrival_time: Optional[time] = None
+    aircraft_type: Optional[str] = None
     status: Optional[str] = None
     gate: Optional[str] = None
     terminal: Optional[str] = None
-    departure_time: Optional[time] = None
-    arrival_time: Optional[time] = None
     price_economy: Optional[float] = None
     price_business: Optional[float] = None
     price_first: Optional[float] = None

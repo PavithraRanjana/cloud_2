@@ -34,7 +34,7 @@ services:
     ports:
       - "4566:4566"
     environment:
-      - SERVICES=events,sqs,s3,dynamodb,lambda,iam,logs
+      - SERVICES=events,sqs,s3,dynamodb,lambda,iam,logs,ses
       - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
       - DEBUG=1
       - AWS_DEFAULT_REGION=eu-west-1
@@ -250,6 +250,7 @@ services:
       - AWS_ENDPOINT_URL=http://localstack:4566
       - REDIS_URL=redis://redis:6379/7
       - ENABLE_SQS_POLLING=true
+      - SES_SENDER_EMAIL=noreply@aerolink.com
     depends_on:
       postgres:
         condition: service_healthy

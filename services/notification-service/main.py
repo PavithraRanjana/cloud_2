@@ -8,9 +8,10 @@ import threading
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+import boto3
 import structlog
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
@@ -28,6 +29,9 @@ logger = structlog.get_logger()
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 START_TIME = time.time()
+
+SES_SENDER_EMAIL = os.environ.get("SES_SENDER_EMAIL", "noreply@aerolink.com")
+ENABLE_SQS_POLLING = os.environ.get("ENABLE_SQS_POLLING", "false").lower() == "true"
 
 TEMPLATES = {
     "BookingCreated": {
@@ -61,6 +65,44 @@ TEMPLATES = {
 }
 
 
+class SESEmailSender:
+    def __init__(self):
+        self.client = boto3.client(
+            "ses",
+            endpoint_url=config.aws_endpoint_url,
+            region_name=config.aws_region,
+            aws_access_key_id=config.aws_access_key_id,
+            aws_secret_access_key=config.aws_secret_access_key,
+        )
+        self.sender = SES_SENDER_EMAIL
+
+    def verify_sender(self):
+        """Verify the sender identity with SES (required before sending)."""
+        try:
+            self.client.verify_email_identity(EmailAddress=self.sender)
+            logger.info("ses_sender_verified", email=self.sender)
+        except Exception as e:
+            logger.error("ses_sender_verification_failed", error=str(e))
+
+    def send(self, to_email: str, subject: str, body: str):
+        """Send a plain-text email via SES."""
+        try:
+            self.client.send_email(
+                Source=self.sender,
+                Destination={"ToAddresses": [to_email]},
+                Message={
+                    "Subject": {"Data": subject, "Charset": "UTF-8"},
+                    "Body": {"Text": {"Data": body, "Charset": "UTF-8"}},
+                },
+            )
+            logger.info("email_sent", to=to_email, subject=subject)
+        except Exception as e:
+            logger.error("email_send_failed", to=to_email, error=str(e))
+
+
+ses = SESEmailSender()
+
+
 def _to_response(n: Notification) -> NotificationResponse:
     return NotificationResponse(
         id=str(n.id), recipient_email=n.recipient_email,
@@ -72,9 +114,6 @@ def _to_response(n: Notification) -> NotificationResponse:
     )
 
 
-ENABLE_SQS_POLLING = os.environ.get("ENABLE_SQS_POLLING", "false").lower() == "true"
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -82,6 +121,7 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
             pass
+    ses.verify_sender()
     if ENABLE_SQS_POLLING:
         poller = threading.Thread(target=poll_events, daemon=True)
         poller.start()
@@ -107,7 +147,7 @@ async def get_db():
 
 async def _persist_notification(recipient_email: str, recipient_name: str,
                                 event_type: str, subject: str, body: str):
-    """Save a notification to the database. Called from the polling thread via asyncio.run()."""
+    """Persist a notification to the database."""
     async with SessionFactory() as session:
         notification = Notification(
             recipient_email=recipient_email,
@@ -123,7 +163,7 @@ async def _persist_notification(recipient_email: str, recipient_name: str,
 
 
 def process_event(event_body: dict):
-    """Process an SQS event and persist it as a notification in the database."""
+    """Process an SQS event: persist to DB then send email."""
     detail_type = event_body.get("detail-type", "")
     detail = event_body.get("detail", {})
     if isinstance(detail, str):
@@ -160,6 +200,8 @@ def process_event(event_body: dict):
         logger.info("notification_persisted", event_type=detail_type, recipient=recipient_email)
     except Exception as e:
         logger.error("notification_persist_failed", error=str(e), detail_type=detail_type)
+
+    ses.send(to_email=recipient_email, subject=subject, body=body)
 
 
 def poll_events():
@@ -198,6 +240,7 @@ async def health():
 
 @app.post("/api/v1/notifications", response_model=NotificationResponse, status_code=201)
 async def create_notification(data: NotificationCreate,
+                              background_tasks: BackgroundTasks,
                               db: AsyncSession = Depends(get_db)):
     notification = Notification(
         recipient_email=data.recipient_email,
@@ -212,6 +255,7 @@ async def create_notification(data: NotificationCreate,
     await db.flush()
     await db.refresh(notification)
     logger.info("notification_created", subject=data.subject, recipient=data.recipient_email)
+    background_tasks.add_task(ses.send, data.recipient_email, data.subject, data.body)
     return _to_response(notification)
 
 

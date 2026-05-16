@@ -145,7 +145,7 @@ async def search_flights(
     departure_date: str = Query(None), cabin_class: str = Query(None),
     min_price: float = Query(None), max_price: float = Query(None),
     cursor: str = Query(None, description="Cursor for pagination (flight ID)"),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
 ):
     """

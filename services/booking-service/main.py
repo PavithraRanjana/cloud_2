@@ -200,7 +200,9 @@ async def create_booking(data: BookingCreate,
 @app.get("/api/v1/bookings", response_model=list[BookingResponse])
 async def list_bookings(current_user: dict = Depends(get_current_user),
                         db: AsyncSession = Depends(get_db)):
-    query = select(Booking).where(Booking.user_id == current_user["sub"]).order_by(Booking.created_at.desc())
+    query = select(Booking).order_by(Booking.created_at.desc())
+    if current_user.get("role") != "admin":
+        query = query.where(Booking.user_id == current_user["sub"])
     result = await db.execute(query)
     return [_to_response(b) for b in result.scalars().all()]
 

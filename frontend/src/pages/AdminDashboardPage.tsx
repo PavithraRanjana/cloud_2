@@ -86,7 +86,7 @@ export function AdminDashboardPage() {
     queryKey: ["admin-flights"],
     queryFn: async () => {
       const { data, error } = await (flightClient as any).GET("/api/v1/flights", {
-        params: { query: { page_size: 500 } },
+        params: { query: { page_size: 500 } }, // cap raised to 500 in flight-service
       });
       if (error) throw new Error();
       return data as { items: Flight[] };

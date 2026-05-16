@@ -17,7 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
-from shared.auth import get_current_user
+from shared.auth import get_current_user, RoleChecker
 from shared.events import EventConsumer
 from shared.cache import create_redis_client, redis_set_nx
 from shared.logging import setup_logging
@@ -44,8 +44,19 @@ DEDUP_TTL = 300  # 5-minute dedup window (SQS visibility timeout default is 30s)
 
 START_TIME = time.time()
 
-SES_SENDER_EMAIL = os.environ.get("SES_SENDER_EMAIL", "noreply@aerolink.com")
+SES_SENDER_EMAIL  = os.environ.get("SES_SENDER_EMAIL", "noreply@aerolink.com")
 ENABLE_SQS_POLLING = os.environ.get("ENABLE_SQS_POLLING", "false").lower() == "true"
+
+MAIN_QUEUE_URL = f"{config.aws_endpoint_url}/000000000000/aerolink-notifications"
+DLQ_URL        = f"{config.aws_endpoint_url}/000000000000/aerolink-notifications-dlq"
+
+_sqs = boto3.client(
+    "sqs",
+    endpoint_url=config.aws_endpoint_url,
+    region_name=config.aws_region,
+    aws_access_key_id=config.aws_access_key_id,
+    aws_secret_access_key=config.aws_secret_access_key,
+)
 
 TEMPLATES = {
     "BookingCreated": {
@@ -312,6 +323,72 @@ async def mark_read(notification_id: str,
     await db.flush()
     await db.refresh(notification)
     return _to_response(notification)
+
+
+@app.get("/api/v1/notifications/dlq")
+async def get_dlq_stats(current_user: dict = Depends(RoleChecker(["admin"]))):
+    """Return DLQ depth and sample failed messages so admins can investigate."""
+    try:
+        attrs = _sqs.get_queue_attributes(
+            QueueUrl=DLQ_URL,
+            AttributeNames=["ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"],
+        )
+        depth = int(attrs["Attributes"].get("ApproximateNumberOfMessages", 0))
+        in_flight = int(attrs["Attributes"].get("ApproximateNumberOfMessagesNotVisible", 0))
+
+        # Peek without consuming (VisibilityTimeout=0 means messages stay visible immediately)
+        peek = _sqs.receive_message(
+            QueueUrl=DLQ_URL,
+            MaxNumberOfMessages=10,
+            VisibilityTimeout=0,
+            AttributeNames=["All"],
+        ).get("Messages", [])
+
+        samples = []
+        for m in peek:
+            try:
+                body = json.loads(m["Body"])
+            except Exception:
+                body = m["Body"]
+            samples.append({
+                "message_id": m["MessageId"],
+                "receive_count": m.get("Attributes", {}).get("ApproximateReceiveCount", "?"),
+                "body": body,
+            })
+
+        return {"queue_depth": depth, "in_flight": in_flight, "samples": samples}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"DLQ unavailable: {e}")
+
+
+@app.post("/api/v1/notifications/dlq/reprocess")
+async def reprocess_dlq(current_user: dict = Depends(RoleChecker(["admin"]))):
+    """
+    Move all DLQ messages back to the main queue for reprocessing.
+    Uses SQS redrive (receive + re-send + delete pattern).
+    """
+    moved = 0
+    errors = 0
+    while True:
+        resp = _sqs.receive_message(
+            QueueUrl=DLQ_URL,
+            MaxNumberOfMessages=10,
+            VisibilityTimeout=30,
+        )
+        messages = resp.get("Messages", [])
+        if not messages:
+            break
+        for m in messages:
+            try:
+                _sqs.send_message(QueueUrl=MAIN_QUEUE_URL, MessageBody=m["Body"])
+                _sqs.delete_message(QueueUrl=DLQ_URL, ReceiptHandle=m["ReceiptHandle"])
+                moved += 1
+            except Exception as e:
+                logger.error("dlq_reprocess_error", error=str(e), message_id=m["MessageId"])
+                errors += 1
+
+    logger.info("dlq_reprocess_complete", moved=moved, errors=errors)
+    return {"moved": moved, "errors": errors}
 
 
 if __name__ == "__main__":

@@ -11,11 +11,12 @@ from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 import httpx
+import pybreaker
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventPublisher
-from shared.resilience import create_circuit_breaker
+from shared.resilience import create_circuit_breaker, async_retry
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete, redis_set_nx
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
@@ -114,6 +115,31 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AeroLink Booking Service", version="1.0.0", lifespan=lifespan)
 
 
+# ── Protected inter-service helpers ─────────────────────────────────────────
+
+async def _flight_get(flight_id: str) -> dict:
+    """GET flight with retry; raises on network failure so breaker tracks it."""
+    async for attempt in async_retry():
+        with attempt:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(f"{config.flight_service_url}/api/v1/flights/{flight_id}")
+                resp.raise_for_status()
+                return resp.json()
+
+
+async def _flight_update_seats(flight_id: str, cabin_class: str, change: int) -> None:
+    async for attempt in async_retry():
+        with attempt:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.put(
+                    f"{config.flight_service_url}/api/v1/flights/{flight_id}/seats",
+                    json={"cabin_class": cabin_class, "change": change},
+                )
+                if resp.status_code == 409:
+                    raise HTTPException(409, "Seats no longer available (concurrent booking)")
+                resp.raise_for_status()
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(service="booking-service", uptime_seconds=time.time() - START_TIME,
@@ -132,30 +158,30 @@ async def create_booking(data: BookingCreate,
         raise HTTPException(status_code=409, detail="Seat reservation in progress for this flight. Please try again.")
 
     try:
-        # Step 1: Check flight availability
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(f"{config.flight_service_url}/api/v1/flights/{data.flight_id}")
-            if resp.status_code == 404:
+        # Step 1: Check flight availability (circuit breaker + retry)
+        try:
+            flight = await flight_breaker.call_async(_flight_get, data.flight_id)
+        except pybreaker.CircuitBreakerError:
+            raise HTTPException(status_code=503, detail="Flight service temporarily unavailable")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
                 raise HTTPException(status_code=404, detail="Flight not found")
-            resp.raise_for_status()
-            flight = resp.json()
+            raise HTTPException(status_code=502, detail="Flight service error")
 
         available_key = f"available_seats_{data.cabin_class}"
         if flight.get(available_key, 0) < data.num_passengers:
             raise HTTPException(status_code=409, detail=f"Not enough {data.cabin_class} seats available")
 
-        # Step 2: Reserve seats
+        # Step 2: Reserve seats (circuit breaker + retry)
         price_key = f"price_{data.cabin_class}"
         total_price = flight.get(price_key, 0) * data.num_passengers
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            seat_resp = await client.put(
-                f"{config.flight_service_url}/api/v1/flights/{data.flight_id}/seats",
-                json={"cabin_class": data.cabin_class, "change": -data.num_passengers}
+        try:
+            await flight_breaker.call_async(
+                _flight_update_seats, data.flight_id, data.cabin_class, -data.num_passengers
             )
-            if seat_resp.status_code == 409:
-                raise HTTPException(status_code=409, detail="Seats no longer available (concurrent booking)")
-            seat_resp.raise_for_status()
+        except pybreaker.CircuitBreakerError:
+            raise HTTPException(status_code=503, detail="Flight service temporarily unavailable")
 
         # Step 3: Create booking record
         import uuid as _uuid
@@ -317,13 +343,11 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(get_curre
     if booking.status in (BookingStatus.CANCELLED, BookingStatus.REFUNDED):
         raise HTTPException(status_code=400, detail="Booking already cancelled")
 
-    # Compensating transaction: release seats back
+    # Compensating transaction: release seats back (best-effort, with retry)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.put(
-                f"{config.flight_service_url}/api/v1/flights/{booking.flight_id}/seats",
-                json={"cabin_class": booking.cabin_class, "change": booking.num_passengers}
-            )
+        await flight_breaker.call_async(
+            _flight_update_seats, str(booking.flight_id), booking.cabin_class, booking.num_passengers
+        )
     except Exception:
         pass
 

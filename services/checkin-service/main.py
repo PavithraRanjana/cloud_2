@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
+import pybreaker
 import boto3
 import structlog
 from sqlalchemy import text
@@ -19,6 +20,7 @@ from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventPublisher
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
+from shared.resilience import create_circuit_breaker, async_retry
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import CheckIn, CheckInStatus
@@ -50,6 +52,9 @@ redis_client = create_redis_client(config.redis_url)
 CHECKIN_CACHE_TTL  = 3600  # check-in record — 1 hour (immutable once issued)
 PDF_URL_CACHE_TTL  = 3300  # presigned URL — cache for 55 min (URL expires at 60 min)
 
+booking_breaker = create_circuit_breaker("booking-service")
+flight_breaker  = create_circuit_breaker("flight-service")
+
 event_publisher = None
 try:
     event_publisher = EventPublisher(
@@ -71,6 +76,17 @@ def resolve_seat(seat_preference: str | None) -> tuple[str, str]:
     row = int(row_str) if row_str else 15
     group = "A" if row <= 10 else "B" if row <= 20 else "C"
     return seat, group
+
+
+async def _update_booking_status(booking_id: str, payload: dict) -> None:
+    async for attempt in async_retry():
+        with attempt:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.put(
+                    f"{config.booking_service_url}/api/v1/bookings/{booking_id}/status",
+                    json=payload,
+                )
+                resp.raise_for_status()
 
 
 async def get_db():
@@ -149,15 +165,15 @@ async def check_in(data: CheckInRequest,
     # Cache the new check-in record
     redis_set_json(redis_client, f"checkin:{data.booking_id}", _to_response(checkin).dict(), CHECKIN_CACHE_TTL)
 
-    # Update booking status via saga
+    # Update booking status via saga (circuit breaker + retry)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.put(
-                f"{config.booking_service_url}/api/v1/bookings/{data.booking_id}/status",
-                json={"status": "checked-in"}
-            )
+        await booking_breaker.call_async(
+            _update_booking_status, data.booking_id, {"status": "checked-in"}
+        )
+    except pybreaker.CircuitBreakerError:
+        logger.warning("checkin_booking_status_skipped_circuit_open", booking_id=data.booking_id)
     except Exception:
-        pass
+        logger.warning("checkin_booking_status_update_failed", booking_id=data.booking_id)
 
     if event_publisher:
         try:

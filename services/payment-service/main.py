@@ -11,6 +11,7 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import httpx
+import pybreaker
 import boto3
 import structlog
 from shared.config import BaseConfig
@@ -20,6 +21,7 @@ from shared.events import EventPublisher
 from shared.encryption import tokenize_card, mask_card_number
 from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_set_nx, redis_get_json, redis_set_json
+from shared.resilience import create_circuit_breaker, async_retry
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Payment, PaymentStatus, PaymentMethod
@@ -35,6 +37,9 @@ START_TIME = time.time()
 
 redis_client = create_redis_client(config.redis_url)
 IDEMPOTENCY_TTL = 86400  # 24 hours — matches DynamoDB TTL
+
+booking_breaker   = create_circuit_breaker("booking-service")
+passenger_breaker = create_circuit_breaker("passenger-service")
 
 event_publisher = None
 try:
@@ -132,6 +137,41 @@ def _to_response(p: Payment) -> PaymentResponse:
         bank_routing_number=p.bank_routing_number, bank_name=p.bank_name,
         created_at=p.created_at,
     )
+
+
+async def _get_booking(booking_id: str, token: str) -> dict | None:
+    async for attempt in async_retry():
+        with attempt:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(
+                    f"{config.booking_service_url}/api/v1/bookings/{booking_id}",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+                return None
+
+
+async def _update_booking_status(booking_id: str, payload: dict) -> None:
+    async for attempt in async_retry():
+        with attempt:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.put(
+                    f"{config.booking_service_url}/api/v1/bookings/{booking_id}/status",
+                    json=payload,
+                )
+                resp.raise_for_status()
+
+
+async def _award_loyalty(user_id: str, points: int) -> None:
+    async for attempt in async_retry():
+        with attempt:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(
+                    f"{config.passenger_service_url}/api/v1/passengers/loyalty/award",
+                    json={"user_id": user_id, "points": points},
+                )
+                resp.raise_for_status()
 
 
 def simulate_payment_processing() -> tuple[bool, str]:
@@ -245,42 +285,36 @@ async def process_payment(data: PaymentCreate, request: Request,
                            detail=f"TXN: {result}, Amount: {data.amount} {data.currency}",
                            ip_address=client_ip)
 
-        # Fetch booking details for accurate event payload (booking_reference + passenger_name)
+        # Fetch booking details for accurate event payload (best-effort, breaker-protected)
         booking_reference = data.booking_id  # fallback
         passenger_name    = current_user.get("full_name") or current_user.get("username", "")
         passenger_email   = current_user.get("email", "")
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                br = await client.get(
-                    f"{config.booking_service_url}/api/v1/bookings/{data.booking_id}",
-                    headers={"Authorization": f"Bearer {current_user.get('_token', '')}"},
-                )
-                if br.status_code == 200:
-                    bdata = br.json()
-                    booking_reference = bdata.get("booking_reference", booking_reference)
-                    passenger_name    = bdata.get("passenger_name") or passenger_name
-                    passenger_email   = bdata.get("passenger_email") or passenger_email
+            bdata = await booking_breaker.call_async(
+                _get_booking, data.booking_id, current_user.get("_token", "")
+            )
+            if bdata:
+                booking_reference = bdata.get("booking_reference", booking_reference)
+                passenger_name    = bdata.get("passenger_name") or passenger_name
+                passenger_email   = bdata.get("passenger_email") or passenger_email
         except Exception:
             pass
 
-        # Update booking status via saga
+        # Update booking status via saga (circuit breaker + retry)
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.put(
-                    f"{config.booking_service_url}/api/v1/bookings/{data.booking_id}/status",
-                    json={"status": "paid", "payment_id": str(payment.id)}
-                )
+            await booking_breaker.call_async(
+                _update_booking_status, data.booking_id,
+                {"status": "paid", "payment_id": str(payment.id)}
+            )
+        except pybreaker.CircuitBreakerError:
+            logger.warning("booking_status_update_skipped_circuit_open", booking_id=data.booking_id)
         except Exception:
-            pass
+            logger.warning("booking_status_update_failed", booking_id=data.booking_id)
 
-        # Award loyalty points: 10 pts per $1 spent (best-effort, non-blocking)
+        # Award loyalty points (best-effort, breaker-protected)
         loyalty_points = max(1, int(data.amount * 10))
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    f"{config.passenger_service_url}/api/v1/passengers/loyalty/award",
-                    json={"user_id": current_user["sub"], "points": loyalty_points},
-                )
+            await passenger_breaker.call_async(_award_loyalty, current_user["sub"], loyalty_points)
         except Exception:
             pass
 
@@ -363,15 +397,15 @@ async def refund_payment(payment_id: str, data: RefundRequest, request: Request,
                        detail=f"Amount: {payment.amount} {payment.currency}, Reason: {data.reason}",
                        ip_address=client_ip)
 
-    # Compensating transaction: cancel the booking
+    # Compensating transaction: cancel the booking (circuit breaker + retry)
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.put(
-                f"{config.booking_service_url}/api/v1/bookings/{payment.booking_id}/status",
-                json={"status": "cancelled"}
-            )
+        await booking_breaker.call_async(
+            _update_booking_status, str(payment.booking_id), {"status": "cancelled"}
+        )
+    except pybreaker.CircuitBreakerError:
+        logger.warning("refund_booking_cancel_skipped_circuit_open", payment_id=payment_id)
     except Exception:
-        pass
+        logger.warning("refund_booking_cancel_failed", payment_id=payment_id)
 
     if event_publisher:
         try:

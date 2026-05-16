@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { passengerClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
+import { NATIONALITIES } from "../data/nationalities";
 
 interface PassengerProfile {
   id: string;
@@ -60,6 +61,11 @@ export function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [natQuery, setNatQuery] = useState("");
+  const [natOpen, setNatOpen] = useState(false);
+  const filteredNationalities = NATIONALITIES.filter((n) =>
+    n.toLowerCase().includes(natQuery.toLowerCase())
+  );
 
   const { data: profile, isLoading, isError, error } = useQuery<PassengerProfile | null>({
     queryKey: ["passenger-profile"],
@@ -117,6 +123,7 @@ export function ProfilePage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["passenger-profile"] });
       setEditing(false);
+      setNatQuery("");
     },
   });
 
@@ -258,8 +265,34 @@ export function ProfilePage() {
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Nationality</label>
-                <input value={form.nationality} onChange={(e) => setForm(f => ({ ...f, nationality: e.target.value }))}
-                  className={INPUT} placeholder="e.g. British" />
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={natQuery || form.nationality}
+                    placeholder="Search nationality…"
+                    onChange={(e) => {
+                      setNatQuery(e.target.value);
+                      setForm(f => ({ ...f, nationality: "" }));
+                      setNatOpen(true);
+                    }}
+                    onFocus={() => { setNatQuery(""); setNatOpen(true); }}
+                    onBlur={() => setTimeout(() => setNatOpen(false), 150)}
+                    className={INPUT}
+                  />
+                  {natOpen && filteredNationalities.length > 0 && (
+                    <ul className="absolute z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg text-sm">
+                      {filteredNationalities.map((n) => (
+                        <li key={n}
+                          onMouseDown={() => {
+                            setForm(f => ({ ...f, nationality: n }));
+                            setNatQuery(n);
+                            setNatOpen(false);
+                          }}
+                          className="cursor-pointer px-3 py-2 hover:bg-blue-50 text-gray-700">{n}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -308,7 +341,7 @@ export function ProfilePage() {
             )}
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => { setEditing(false); }}
+              <button onClick={() => { setEditing(false); setNatQuery(""); }}
                 className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">
                 Cancel
               </button>

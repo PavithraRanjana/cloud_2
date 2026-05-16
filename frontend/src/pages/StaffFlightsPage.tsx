@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { flightClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
+import { AirportCombobox, AIRPORTS } from "../components/AirportCombobox";
 
 interface Flight {
   id: string;
@@ -122,12 +123,12 @@ function EditPanel({ flight, onClose }: { flight: Flight; onClose: () => void })
           <input value={form.airline} onChange={e => set("airline", e.target.value)} className={INPUT} placeholder="British Airways" />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Origin (IATA)</label>
-          <input value={form.origin} onChange={e => set("origin", e.target.value.toUpperCase())} className={INPUT} placeholder="LHR" maxLength={3} />
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Origin</label>
+          <AirportCombobox value={form.origin} onChange={v => set("origin", v)} placeholder="Origin airport…" exclude={form.destination} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Destination (IATA)</label>
-          <input value={form.destination} onChange={e => set("destination", e.target.value.toUpperCase())} className={INPUT} placeholder="JFK" maxLength={3} />
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Destination</label>
+          <AirportCombobox value={form.destination} onChange={v => set("destination", v)} placeholder="Destination airport…" exclude={form.origin} />
         </div>
       </div>
 
@@ -274,12 +275,12 @@ function CreatePanel({ onClose }: { onClose: () => void }) {
           <input value={form.airline} onChange={e => set("airline", e.target.value)} className={INPUT} placeholder="British Airways" />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Origin (IATA)*</label>
-          <input value={form.origin} onChange={e => set("origin", e.target.value.toUpperCase())} className={INPUT} placeholder="LHR" maxLength={3} />
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Origin*</label>
+          <AirportCombobox value={form.origin} onChange={v => set("origin", v)} placeholder="Origin airport…" exclude={form.destination} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Destination (IATA)*</label>
-          <input value={form.destination} onChange={e => set("destination", e.target.value.toUpperCase())} className={INPUT} placeholder="JFK" maxLength={3} />
+          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Destination*</label>
+          <AirportCombobox value={form.destination} onChange={v => set("destination", v)} placeholder="Destination airport…" exclude={form.origin} />
         </div>
         <div>
           <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Departure Date*</label>
@@ -384,11 +385,17 @@ export function StaffFlightsPage() {
     );
   }
 
-  const flights = (data?.items ?? []).filter(f =>
-    !search || [f.flight_number, f.origin, f.destination, f.airline].some(v =>
-      v.toLowerCase().includes(search.toLowerCase())
-    )
-  );
+  const flights = (data?.items ?? []).filter(f => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const originInfo = AIRPORTS[f.origin];
+    const destInfo   = AIRPORTS[f.destination];
+    return [
+      f.flight_number, f.origin, f.destination, f.airline,
+      originInfo?.city, originInfo?.country,
+      destInfo?.city,   destInfo?.country,
+    ].some(v => v?.toLowerCase().includes(q));
+  });
 
   return (
     <div className="space-y-6">

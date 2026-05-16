@@ -10,6 +10,7 @@ interface PassengerProfile {
   id: string;
   user_id: string;
   first_name: string;
+  middle_name: string | null;
   last_name: string;
   date_of_birth: string | null;
   nationality: string | null;
@@ -88,7 +89,7 @@ export function ProfilePage() {
   const hasProfile = !!profile?.id;
 
   const [form, setForm] = useState({
-    first_name: "", last_name: "", date_of_birth: "",
+    first_name: "", middle_name: "", last_name: "", date_of_birth: "",
     nationality: "", passport_number: "", phone_country_code: "+1", phone_number: "",
     meal_preference: "", seat_preference: "",
   });
@@ -100,6 +101,7 @@ export function ProfilePage() {
         .find((cc) => raw.startsWith(cc.dial));
       setForm({
         first_name:          profile.first_name    ?? "",
+        middle_name:         profile.middle_name   ?? "",
         last_name:           profile.last_name     ?? "",
         date_of_birth:       profile.date_of_birth ?? "",
         nationality:         profile.nationality   ?? "",
@@ -117,6 +119,7 @@ export function ProfilePage() {
     mutationFn: async () => {
       const body = {
         first_name:      form.first_name,
+        middle_name:     form.middle_name  || undefined,
         last_name:       form.last_name,
         date_of_birth:   form.date_of_birth   || undefined,
         nationality:     form.nationality     || undefined,
@@ -242,6 +245,7 @@ export function ProfilePage() {
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
             {[
               { label: "First Name",      value: profile.first_name },
+              { label: "Middle Name",     value: profile.middle_name ?? "—" },
               { label: "Last Name",       value: profile.last_name },
               { label: "Date of Birth",   value: profile.date_of_birth ?? "—" },
               { label: "Nationality",     value: profile.nationality ?? "—" },
@@ -260,11 +264,16 @@ export function ProfilePage() {
 
         {editing && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">First Name*</label>
                 <input value={form.first_name} onChange={(e) => setForm(f => ({ ...f, first_name: e.target.value }))}
                   className={INPUT} placeholder="First name" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Middle Name</label>
+                <input value={form.middle_name} onChange={(e) => setForm(f => ({ ...f, middle_name: e.target.value }))}
+                  className={INPUT} placeholder="Middle name" />
               </div>
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Last Name*</label>

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 import httpx
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
@@ -50,7 +50,7 @@ def _to_response(p: PassengerProfile) -> ProfileResponse:
 
     return ProfileResponse(
         id=str(p.id), user_id=str(p.user_id),
-        first_name=p.first_name, last_name=p.last_name,
+        first_name=p.first_name, middle_name=p.middle_name, last_name=p.last_name,
         date_of_birth=p.date_of_birth, nationality=p.nationality,
         passport_number=passport, phone_number=p.phone_number,
         loyalty_tier=p.loyalty_tier, loyalty_points=p.loyalty_points,
@@ -66,6 +66,9 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
             pass  # Table may already exist from another service starting concurrently
+        await conn.execute(text(
+            "ALTER TABLE passenger_profiles ADD COLUMN IF NOT EXISTS middle_name VARCHAR(100)"
+        ))
     yield
     await engine.dispose()
 
@@ -94,6 +97,7 @@ async def create_profile(data: ProfileCreate,
     profile = PassengerProfile(
         user_id=current_user["sub"],
         first_name=data.first_name,
+        middle_name=data.middle_name,
         last_name=data.last_name,
         date_of_birth=data.date_of_birth,
         nationality=data.nationality,

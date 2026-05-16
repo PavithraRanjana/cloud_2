@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 class ProfileCreate(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
+    middle_name: Optional[str] = Field(None, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
     date_of_birth: Optional[date] = None
     nationality: Optional[str] = None
@@ -17,6 +18,7 @@ class ProfileCreate(BaseModel):
 
 class ProfileUpdate(BaseModel):
     first_name: Optional[str] = None
+    middle_name: Optional[str] = None
     last_name: Optional[str] = None
     date_of_birth: Optional[date] = None
     nationality: Optional[str] = None
@@ -31,6 +33,7 @@ class ProfileResponse(BaseModel):
     id: str
     user_id: str
     first_name: str
+    middle_name: Optional[str]
     last_name: str
     date_of_birth: Optional[date]
     nationality: Optional[str]

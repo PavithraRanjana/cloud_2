@@ -11,6 +11,7 @@ class PassengerProfile(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
     first_name = Column(String(100), nullable=False)
+    middle_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=False)
     date_of_birth = Column(Date, nullable=True)
     nationality = Column(String(3), nullable=True)

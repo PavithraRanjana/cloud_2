@@ -2,8 +2,9 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   AeroLink Airline Microservices - Production Infrastructure.
   Deploys 9 ECS Fargate services, RDS PostgreSQL 15, ElastiCache Redis 7,
-  EventBridge, SQS, S3, DynamoDB, 3 Lambda functions, and supporting
-  networking / security / service-discovery infrastructure.
+  AWS API Gateway HTTP API (v2) with VPC Link, EventBridge, SQS, S3,
+  DynamoDB, 3 Lambda functions, and supporting networking / security /
+  service-discovery infrastructure.
 
 # ============================================================
 # Parameters
@@ -243,20 +244,30 @@ Resources:
   # ============================================================
   # Security Groups
   # ============================================================
+  VpcLinkSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: API Gateway VPC Link - egress to internal ALB on port 80
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          DestinationSecurityGroupId: !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-vpclink-sg'
+
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Public ALB - allows HTTP inbound
+      GroupDescription: Internal ALB - allows HTTP from API Gateway VPC Link
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
-          CidrIp: '0.0.0.0/0'
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: '0.0.0.0/0'
+          SourceSecurityGroupId: !Ref VpcLinkSecurityGroup
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-alb-sg'
@@ -656,9 +667,12 @@ Resources:
                 Action:
                   - sqs:ReceiveMessage
                   - sqs:DeleteMessage
+                  - sqs:SendMessage
                   - sqs:GetQueueAttributes
                   - sqs:GetQueueUrl
-                Resource: !GetAtt NotificationsQueue.Arn
+                Resource:
+                  - !GetAtt NotificationsQueue.Arn
+                  - !GetAtt NotificationsDLQ.Arn
               - Sid: S3
                 Effect: Allow
                 Action:
@@ -676,7 +690,7 @@ Resources:
                   - dynamodb:Query
                   - dynamodb:UpdateItem
                   - dynamodb:DeleteItem
-                Resource: !GetAtt FlightSearchCacheTable.Arn
+                Resource: !GetAtt PaymentIdempotencyTable.Arn
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -711,17 +725,17 @@ Resources:
                 Resource: !Sub '${DocumentsBucket.Arn}/*'
 
   # ============================================================
-  # ALB – Application Load Balancer (public, for API Gateway)
+  # ALB – Application Load Balancer (internal; fronted by API Gateway VPC Link)
   # ============================================================
   ALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Name: !Sub '${EnvironmentName}-aerolink-alb'
-      Scheme: internet-facing
+      Scheme: internal
       Type: application
       Subnets:
-        - !Ref PublicSubnet1
-        - !Ref PublicSubnet2
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
       SecurityGroups:
         - !Ref ALBSecurityGroup
       Tags:
@@ -751,6 +765,85 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
+
+  # ============================================================
+  # AWS API Gateway HTTP API (v2) + VPC Link
+  # ============================================================
+  HttpApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${EnvironmentName}-aerolink'
+      RetentionInDays: 30
+
+  AeroLinkHttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${EnvironmentName}-aerolink-api'
+      ProtocolType: HTTP
+      Description: AeroLink public HTTP API — terminates TLS, forwards to internal ALB via VPC Link
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - X-Request-ID
+        MaxAge: 300
+
+  AeroLinkVpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: !Sub '${EnvironmentName}-aerolink-vpclink'
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VpcLinkSecurityGroup
+
+  HttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      ConnectionType: VPC_LINK
+      ConnectionId: !Ref AeroLinkVpcLink
+      IntegrationUri: !Ref ALBListener
+      PayloadFormatVersion: '1.0'
+      TimeoutInMillis: 29000
+
+  HttpApiDefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: '$default'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+
+  HttpApiDefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      StageName: '$default'
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 1000
+        ThrottlingRateLimit: 500
+      AccessLogSettings:
+        DestinationArn: !GetAtt HttpApiLogGroup.Arn
+        Format: >-
+          {"requestId":"$context.requestId","ip":"$context.identity.sourceIp",
+          "requestTime":"$context.requestTime","httpMethod":"$context.httpMethod",
+          "routeKey":"$context.routeKey","status":"$context.status",
+          "responseLength":"$context.responseLength",
+          "integrationLatency":"$context.integrationLatency",
+          "errorMessage":"$context.error.message"}
 
   # ============================================================
   # ECS Cluster
@@ -1386,16 +1479,16 @@ Resources:
         - Id: notification-queue
           Arn: !GetAtt NotificationsQueue.Arn
 
-  PaymentProcessedRule:
+  PaymentCompletedRule:
     Type: AWS::Events::Rule
     Properties:
-      Name: !Sub '${EnvironmentName}-payment-processed-to-notifications'
+      Name: !Sub '${EnvironmentName}-payment-completed-to-notifications'
       EventBusName: !Ref AerolinkEventBus
       EventPattern:
         source:
           - payment-service
         detail-type:
-          - PaymentProcessed
+          - PaymentCompleted
       Targets:
         - Id: notification-queue
           Arn: !GetAtt NotificationsQueue.Arn
@@ -1458,6 +1551,48 @@ Resources:
         - Id: notification-queue
           Arn: !GetAtt NotificationsQueue.Arn
 
+  PaymentRefundedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${EnvironmentName}-payment-refunded-to-notifications'
+      EventBusName: !Ref AerolinkEventBus
+      EventPattern:
+        source:
+          - payment-service
+        detail-type:
+          - PaymentRefunded
+      Targets:
+        - Id: notification-queue
+          Arn: !GetAtt NotificationsQueue.Arn
+
+  BaggageRegisteredRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${EnvironmentName}-baggage-registered-to-notifications'
+      EventBusName: !Ref AerolinkEventBus
+      EventPattern:
+        source:
+          - baggage-service
+        detail-type:
+          - BaggageRegistered
+      Targets:
+        - Id: notification-queue
+          Arn: !GetAtt NotificationsQueue.Arn
+
+  FlightScheduleUpdatedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${EnvironmentName}-flight-schedule-updated-to-notifications'
+      EventBusName: !Ref AerolinkEventBus
+      EventPattern:
+        source:
+          - flight-service
+        detail-type:
+          - FlightScheduleUpdated
+      Targets:
+        - Id: notification-queue
+          Arn: !GetAtt NotificationsQueue.Arn
+
   PricingRecalculationScheduleRule:
     Type: AWS::Events::Rule
     Properties:
@@ -1504,11 +1639,14 @@ Resources:
               ArnEquals:
                 aws:SourceArn:
                   - !GetAtt BookingCreatedRule.Arn
-                  - !GetAtt PaymentProcessedRule.Arn
+                  - !GetAtt PaymentCompletedRule.Arn
+                  - !GetAtt PaymentFailedRule.Arn
+                  - !GetAtt PaymentRefundedRule.Arn
                   - !GetAtt CheckInCompletedRule.Arn
                   - !GetAtt BaggageStatusChangedRule.Arn
+                  - !GetAtt BaggageRegisteredRule.Arn
                   - !GetAtt BookingCancelledRule.Arn
-                  - !GetAtt PaymentFailedRule.Arn
+                  - !GetAtt FlightScheduleUpdatedRule.Arn
 
   # ============================================================
   # S3 Bucket
@@ -1542,21 +1680,20 @@ Resources:
   # ============================================================
   # DynamoDB
   # ============================================================
-  FlightSearchCacheTable:
+  PaymentIdempotencyTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: flight-search-cache
+      TableName: payment-idempotency
       AttributeDefinitions:
-        - AttributeName: route
-          AttributeType: S
-        - AttributeName: departure_date
+        - AttributeName: idempotency_key
           AttributeType: S
       KeySchema:
-        - AttributeName: route
+        - AttributeName: idempotency_key
           KeyType: HASH
-        - AttributeName: departure_date
-          KeyType: RANGE
       BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
       SSESpecification:
@@ -1591,7 +1728,7 @@ Resources:
       FunctionName: !Ref NotificationDispatchFunction
       EventSourceArn: !GetAtt NotificationsQueue.Arn
       BatchSize: 10
-      Enabled: true
+      Enabled: false  # notification-service ECS task polls SQS directly; Lambda trigger disabled to avoid double-processing
 
   # --- Lambda 2: Boarding Pass Generator (EventBridge-triggered) ---
   BoardingPassGeneratorFunction:
@@ -1668,11 +1805,17 @@ Outputs:
     Export:
       Name: !Sub '${EnvironmentName}-VPCId'
 
-  ALBDNSName:
-    Description: Public URL for the API Gateway (ALB DNS name)
+  ApiGatewayEndpoint:
+    Description: Public HTTPS endpoint for the AeroLink API (API Gateway invoke URL)
+    Value: !Sub 'https://${AeroLinkHttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+    Export:
+      Name: !Sub '${EnvironmentName}-ApiGatewayEndpoint'
+
+  InternalALBDNSName:
+    Description: Internal ALB DNS name (not publicly reachable; accessed via VPC Link)
     Value: !GetAtt ALB.DNSName
     Export:
-      Name: !Sub '${EnvironmentName}-ALBDNSName'
+      Name: !Sub '${EnvironmentName}-InternalALBDNSName'
 
   RDSEndpoint:
     Description: PostgreSQL RDS endpoint address
@@ -1708,9 +1851,9 @@ Outputs:
     Export:
       Name: !Sub '${EnvironmentName}-DocumentsBucket'
 
-  FlightSearchCacheTableName:
-    Description: DynamoDB flight search cache table
-    Value: !Ref FlightSearchCacheTable
+  PaymentIdempotencyTableName:
+    Description: DynamoDB payment idempotency table
+    Value: !Ref PaymentIdempotencyTable
 
   ECSClusterName:
     Description: ECS cluster name

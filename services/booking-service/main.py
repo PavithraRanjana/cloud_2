@@ -203,7 +203,7 @@ async def list_bookings(current_user: dict = Depends(get_current_user),
     if current_user.get("role") == "admin":
         # Return only bookings made by passenger-role users
         passenger_ids = text(
-            "SELECT id FROM users WHERE UPPER(role) = 'PASSENGER'"
+            "SELECT id FROM users WHERE role::text = 'PASSENGER'"
         )
         result_ids = await db.execute(passenger_ids)
         passenger_user_ids = [str(row[0]) for row in result_ids.fetchall()]

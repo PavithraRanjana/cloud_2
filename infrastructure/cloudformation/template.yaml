@@ -2886,6 +2886,67 @@ Resources:
           - Z2BJ6XQ5FK7U4H   # Global Accelerator hosted zone ID (fixed value)
           - !GetAtt PublicALB.CanonicalHostedZoneID
 
+  # ============================================================
+  # AWS WAF — rate-based per-IP limiting for API Gateway
+  # ============================================================
+  # HTTP API v2 stage throttling (ThrottlingRateLimit/BurstLimit) enforces
+  # a global per-stage ceiling. WAF rate-based rules add per-source-IP
+  # enforcement, replacing the old in-memory rate limiter in the custom
+  # api-gateway service (which broke under horizontal scaling).
+  WafWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${EnvironmentName}-aerolink-waf'
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${EnvironmentName}AerolinkWaf'
+      Rules:
+        - Name: RateLimitPerIP
+          Priority: 1
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: 500        # requests per 5-minute window per IP (~100 req/min)
+              AggregateKeyType: IP
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${EnvironmentName}RateLimitPerIP'
+        - Name: RateLimitPartnerApiKey
+          Priority: 2
+          Action:
+            Block: {}
+          Statement:
+            RateBasedStatement:
+              Limit: 5000       # higher ceiling for x-api-key holders (~1000 req/min)
+              AggregateKeyType: IP
+              ScopeDownStatement:
+                ByteMatchStatement:
+                  FieldToMatch:
+                    SingleHeader:
+                      Name: x-api-key
+                  PositionalConstraint: EXISTS
+                  SearchString: ''
+                  TextTransformations:
+                    - Priority: 0
+                      Type: NONE
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${EnvironmentName}RateLimitPartnerApiKey'
+
+  WafWebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    DependsOn: HttpApiDefaultStage
+    Properties:
+      ResourceArn: !Sub 'arn:aws:apigateway:${AWS::Region}::/apis/${AeroLinkHttpApi}/stages/$default'
+      WebACLArn: !GetAtt WafWebAcl.Arn
+
 # ============================================================
 # Outputs
 # ============================================================
@@ -3019,3 +3080,9 @@ Outputs:
     Value: !GetAtt DBReadReplica.Endpoint.Address
     Export:
       Name: !Sub '${EnvironmentName}-RDSReadReplicaEndpoint'
+
+  WafWebAclArn:
+    Description: WAF WebACL ARN — associate with CloudFront or additional API stages as needed
+    Value: !GetAtt WafWebAcl.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-WafWebAclArn'

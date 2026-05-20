@@ -40,12 +40,6 @@ PUBLIC_PATHS = {
     "/health",
 }
 
-# Rate limiting: simple in-memory counter
-rate_limit_store: dict[str, list[float]] = {}
-RATE_LIMIT_PUBLIC = 100  # requests per minute for public/JWT users
-RATE_LIMIT_PARTNER = 1000  # requests per minute for partner API key holders
-RATE_WINDOW = 60  # seconds
-
 app = FastAPI(title="AeroLink API Gateway", version="1.0.0")
 
 app.add_middleware(
@@ -55,26 +49,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-def check_rate_limit(client_key: str, is_partner: bool = False) -> bool:
-    """Differentiated rate limiting: partners get higher limits via API key."""
-    now = time.time()
-    limit = RATE_LIMIT_PARTNER if is_partner else RATE_LIMIT_PUBLIC
-
-    if client_key not in rate_limit_store:
-        rate_limit_store[client_key] = []
-
-    # Clean old entries
-    rate_limit_store[client_key] = [
-        t for t in rate_limit_store[client_key] if now - t < RATE_WINDOW
-    ]
-
-    if len(rate_limit_store[client_key]) >= limit:
-        return False
-
-    rate_limit_store[client_key].append(now)
-    return True
 
 
 def is_public_path(path: str) -> bool:
@@ -106,21 +80,8 @@ async def gateway_proxy(request: Request, path: str):
     full_path = f"/{path}"
     trace_id = str(uuid.uuid4())
 
-    # Detect API key for partner authentication and differentiated rate limiting
     client_ip = request.client.host if request.client else "unknown"
     api_key = request.headers.get("x-api-key")
-    is_partner = False
-
-    if api_key:
-        # Rate limit by API key (partners get 1000 req/min)
-        rate_key = f"apikey:{api_key}"
-        is_partner = True
-    else:
-        # Rate limit by IP (public gets 100 req/min)
-        rate_key = f"ip:{client_ip}"
-
-    if not check_rate_limit(rate_key, is_partner=is_partner):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     # Authentication for protected paths
     if not is_public_path(full_path):

@@ -1,10 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >
   AeroLink Airline Microservices - Production Infrastructure.
-  Deploys 9 ECS Fargate services, RDS PostgreSQL 15, ElastiCache Redis 7,
-  AWS API Gateway HTTP API (v2) with VPC Link, EventBridge, SQS, S3,
-  DynamoDB, 3 Lambda functions, and supporting networking / security /
-  service-discovery infrastructure.
+  Deploys 9 ECS Fargate services (auto-scaled), RDS PostgreSQL 15 (Multi-AZ),
+  ElastiCache Redis 7 (multi-node), AWS API Gateway HTTP API (v2) with VPC Link,
+  EventBridge, SQS, S3 (with cross-region replication), DynamoDB, 3 Lambda
+  functions, CloudFront CDN, AWS Global Accelerator, Route 53 failover,
+  and supporting networking / security / service-discovery infrastructure.
+  Supports primary and secondary (read-replica) regional deployments.
 
 # ============================================================
 # Parameters
@@ -58,7 +60,7 @@ Parameters:
 
   DBMultiAZ:
     Type: String
-    Default: 'false'
+    Default: 'true'
     AllowedValues: ['true', 'false']
 
   RedisNodeType:
@@ -124,6 +126,85 @@ Parameters:
     Type: String
     Default: 'https://app.aerolink.com'
     Description: URL to redirect to after Cognito logout
+
+  # ── Multi-region / HA parameters ─────────────────────────────
+  DeploymentRole:
+    Type: String
+    Default: primary
+    AllowedValues: [primary, secondary]
+    Description: >
+      'primary' deploys the full stack including Global Accelerator and Route 53
+      primary record. 'secondary' deploys the full stack plus an RDS read replica
+      and registers as the Route 53 failover secondary.
+
+  PrimaryRegion:
+    Type: String
+    Default: eu-west-1
+    Description: AWS region of the primary deployment
+
+  SecondaryRegion:
+    Type: String
+    Default: us-east-1
+    Description: AWS region of the secondary deployment
+
+  PrimaryRDSIdentifier:
+    Type: String
+    Default: ''
+    Description: >
+      RDS instance identifier from the primary stack — required when
+      DeploymentRole=secondary to create the cross-region read replica.
+
+  DomainName:
+    Type: String
+    Default: app.aerolink.com
+    Description: Public domain name for the application
+
+  HostedZoneId:
+    Type: String
+    Default: ''
+    Description: Route 53 hosted zone ID for DomainName (leave empty to skip DNS records)
+
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: ACM certificate ARN for HTTPS (must be in us-east-1 for CloudFront)
+
+  ECSDesiredCount:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    Description: Desired number of ECS tasks per service (minimum 2 for HA)
+
+  ECSMinCapacity:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    Description: Auto-scaling minimum task count per service
+
+  ECSMaxCapacity:
+    Type: Number
+    Default: 10
+    MinValue: 2
+    Description: Auto-scaling maximum task count per service
+
+  SecondaryALBArn:
+    Type: String
+    Default: ''
+    Description: >
+      ARN of the public ALB in the secondary region — used to add a second
+      endpoint to the Global Accelerator endpoint group. Fill in after the
+      secondary stack is deployed and update the primary stack.
+
+# ============================================================
+# Conditions
+# ============================================================
+Conditions:
+  IsPrimary:    !Equals [!Ref DeploymentRole, primary]
+  IsSecondary:  !Equals [!Ref DeploymentRole, secondary]
+  HasDomain:    !Not [!Equals [!Ref HostedZoneId, '']]
+  HasCert:      !Not [!Equals [!Ref CertificateArn, '']]
+  HasSecondaryALB: !Not [!Equals [!Ref SecondaryALBArn, '']]
+  HasPrimaryRDS:   !Not [!Equals [!Ref PrimaryRDSIdentifier, '']]
 
 Resources:
 
@@ -199,21 +280,36 @@ Resources:
         - Key: Name
           Value: !Sub '${EnvironmentName}-private-2'
 
-  # ---- NAT Gateway (single, in PublicSubnet1) ----
-  NatGatewayEIP:
+  # ---- NAT Gateways — one per AZ for AZ-level fault isolation ----
+  NatGatewayEIP1:
     Type: AWS::EC2::EIP
     DependsOn: VPCGatewayAttachment
     Properties:
       Domain: vpc
 
-  NatGateway:
+  NatGateway1:
     Type: AWS::EC2::NatGateway
     Properties:
-      AllocationId: !GetAtt NatGatewayEIP.AllocationId
+      AllocationId: !GetAtt NatGatewayEIP1.AllocationId
       SubnetId: !Ref PublicSubnet1
       Tags:
         - Key: Name
-          Value: !Sub '${EnvironmentName}-nat'
+          Value: !Sub '${EnvironmentName}-nat-az1'
+
+  NatGatewayEIP2:
+    Type: AWS::EC2::EIP
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEIP2.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-nat-az2'
 
   # ---- Route Tables ----
   PublicRouteTable:
@@ -244,32 +340,48 @@ Resources:
       SubnetId: !Ref PublicSubnet2
       RouteTableId: !Ref PublicRouteTable
 
-  PrivateRouteTable:
+  # Separate route table per private subnet so each AZ routes through its own NAT
+  PrivateRouteTable1:
     Type: AWS::EC2::RouteTable
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${EnvironmentName}-private-rt'
+          Value: !Sub '${EnvironmentName}-private-rt-az1'
 
-  PrivateRoute:
+  PrivateRoute1:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTable1
       DestinationCidrBlock: '0.0.0.0/0'
-      NatGatewayId: !Ref NatGateway
+      NatGatewayId: !Ref NatGateway1
 
   PrivateSubnet1RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet1
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-private-rt-az2'
+
+  PrivateRoute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: '0.0.0.0/0'
+      NatGatewayId: !Ref NatGateway2
 
   PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
       SubnetId: !Ref PrivateSubnet2
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTable2
 
   # ============================================================
   # Security Groups
@@ -389,6 +501,36 @@ Resources:
         - Key: Name
           Value: !Sub '${EnvironmentName}-lambda-sg'
 
+  # Public ALB security group — allows HTTPS from Global Accelerator anycast IPs
+  # and forwards to ECS on port 8000
+  PublicALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Internet-facing ALB for Global Accelerator — allows HTTPS inbound
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: '0.0.0.0/0'
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-public-alb-sg'
+
+  # Allow public ALB to reach ECS tasks
+  ECSFromPublicALBIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ECSSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8000
+      ToPort: 8000
+      SourceSecurityGroupId: !Ref PublicALBSecurityGroup
+
   # ============================================================
   # RDS PostgreSQL 15
   # ============================================================
@@ -449,8 +591,9 @@ Resources:
       Engine: redis
       EngineVersion: '7.0'
       CacheNodeType: !Ref RedisNodeType
-      NumCacheClusters: 1
-      AutomaticFailoverEnabled: false
+      NumCacheClusters: 2          # one per AZ — enables automatic failover
+      AutomaticFailoverEnabled: true
+      MultiAZEnabled: true
       AtRestEncryptionEnabled: true
       TransitEncryptionEnabled: false
       CacheSubnetGroupName: !Ref RedisSubnetGroup
@@ -804,6 +947,86 @@ Resources:
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
+
+  # ============================================================
+  # Internet-facing Public ALB — target for Global Accelerator
+  # ============================================================
+  PublicALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${EnvironmentName}-aerolink-public-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref PublicALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aerolink-public-alb'
+
+  PublicALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${EnvironmentName}-public-api-gw-tg'
+      VpcId: !Ref VPC
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  PublicALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref PublicALB
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref PublicALBTargetGroup
+
+  PublicALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref PublicALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            StatusCode: HTTP_301
+
+  # ============================================================
+  # RDS cross-region read replica (secondary deployment only)
+  # ============================================================
+  DBReadReplica:
+    Type: AWS::RDS::DBInstance
+    Condition: IsSecondary
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      DBInstanceIdentifier: !Sub '${EnvironmentName}-aerolink-db-replica'
+      SourceDBInstanceIdentifier: !Sub 'arn:aws:rds:${PrimaryRegion}:${AWS::AccountId}:db:${PrimaryRDSIdentifier}'
+      DBInstanceClass: !Ref DBInstanceClass
+      StorageType: gp3
+      StorageEncrypted: true
+      VPCSecurityGroups:
+        - !Ref RDSSecurityGroup
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      PubliclyAccessible: false
+      CopyTagsToSnapshot: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aerolink-db-replica'
 
   # ============================================================
   # AWS API Gateway HTTP API (v2) + VPC Link
@@ -1537,7 +1760,10 @@ Resources:
       ServiceName: api-gateway
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref APIGatewayTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1561,7 +1787,10 @@ Resources:
       ServiceName: auth-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref AuthServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1580,7 +1809,10 @@ Resources:
       ServiceName: flight-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref FlightServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1599,7 +1831,10 @@ Resources:
       ServiceName: booking-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref BookingServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1618,7 +1853,10 @@ Resources:
       ServiceName: payment-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref PaymentServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1637,7 +1875,10 @@ Resources:
       ServiceName: baggage-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref BaggageServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1656,7 +1897,10 @@ Resources:
       ServiceName: checkin-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref CheckinServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1675,7 +1919,10 @@ Resources:
       ServiceName: passenger-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref PassengerServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1694,7 +1941,10 @@ Resources:
       ServiceName: notification-service
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref NotificationServiceTaskDef
-      DesiredCount: 1
+      DesiredCount: !Ref ECSDesiredCount
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 50
+        MaximumPercent: 200
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
@@ -1897,6 +2147,7 @@ Resources:
                   - !GetAtt BaggageRegisteredRule.Arn
                   - !GetAtt BookingCancelledRule.Arn
                   - !GetAtt FlightScheduleUpdatedRule.Arn
+                  - !GetAtt SeatAvailabilityChangedRule.Arn
 
   # ============================================================
   # S3 Bucket
@@ -1912,7 +2163,7 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
       VersioningConfiguration:
-        Status: Enabled
+        Status: Enabled   # versioning required for cross-region replication
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -1926,6 +2177,28 @@ Resources:
             Transitions:
               - TransitionInDays: 90
                 StorageClass: STANDARD_IA
+      ReplicationConfiguration: !If
+        - IsPrimary
+        - Role: !GetAtt S3ReplicationRole.Arn
+          Rules:
+            - Id: ReplicateAllToSecondary
+              Status: Enabled
+              Filter:
+                Prefix: ''
+              Destination:
+                Bucket: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-replica-${AWS::AccountId}'
+                StorageClass: STANDARD_IA
+                ReplicationTime:
+                  Status: Enabled
+                  Time:
+                    Minutes: 15
+                Metrics:
+                  Status: Enabled
+                  EventThreshold:
+                    Minutes: 15
+              DeleteMarkerReplication:
+                Status: Enabled
+        - !Ref AWS::NoValue
 
   # ============================================================
   # DynamoDB
@@ -2045,6 +2318,519 @@ Resources:
       Principal: events.amazonaws.com
       SourceArn: !GetAtt PricingRecalculationScheduleRule.Arn
 
+  # ============================================================
+  # SeatAvailabilityChanged EventBridge rule (audit fix)
+  # ============================================================
+  SeatAvailabilityChangedRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub '${EnvironmentName}-seat-availability-to-notifications'
+      EventBusName: !Ref AerolinkEventBus
+      EventPattern:
+        source:
+          - flight-service
+        detail-type:
+          - SeatAvailabilityChanged
+      Targets:
+        - Id: notification-queue
+          Arn: !GetAtt NotificationsQueue.Arn
+
+  # ============================================================
+  # Application Auto Scaling — CPU-based target tracking for all services
+  # ============================================================
+  AutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-autoscaling-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceAutoscaleRole
+
+  # Macro to avoid repeating the target/policy pair 9 times — one block per service:
+
+  APIGatewayScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: APIGatewayService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/api-gateway'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  APIGatewayScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-api-gateway-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref APIGatewayScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  AuthServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: AuthService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/auth-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  AuthServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-auth-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref AuthServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  FlightServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: FlightService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/flight-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  FlightServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-flight-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref FlightServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  BookingServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: BookingService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/booking-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  BookingServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-booking-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref BookingServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  PaymentServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: PaymentService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/payment-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  PaymentServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-payment-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref PaymentServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  BaggageServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: BaggageService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/baggage-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  BaggageServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-baggage-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref BaggageServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  CheckinServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: CheckinService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/checkin-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  CheckinServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-checkin-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref CheckinServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  PassengerServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: PassengerService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/passenger-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  PassengerServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-passenger-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref PassengerServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  NotificationServiceScalableTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    DependsOn: NotificationService
+    Properties:
+      ServiceNamespace: ecs
+      ResourceId: !Sub 'service/${ECSCluster}/notification-service'
+      ScalableDimension: ecs:service:DesiredCount
+      MinCapacity: !Ref ECSMinCapacity
+      MaxCapacity: !Ref ECSMaxCapacity
+      RoleARN: !GetAtt AutoScalingRole.Arn
+
+  NotificationServiceScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${EnvironmentName}-notification-service-cpu-scaling'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref NotificationServiceScalableTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70
+        ScaleInCooldown: 300
+        ScaleOutCooldown: 60
+
+  # ============================================================
+  # S3 cross-region replication
+  # ============================================================
+
+  # IAM role that S3 uses to replicate objects to the secondary region
+  S3ReplicationRole:
+    Type: AWS::IAM::Role
+    Condition: IsPrimary
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-s3-replication-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ReplicationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetReplicationConfiguration
+                  - s3:ListBucket
+                Resource: !GetAtt DocumentsBucket.Arn
+              - Effect: Allow
+                Action:
+                  - s3:GetObjectVersionForReplication
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                Resource: !Sub '${DocumentsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:ReplicateObject
+                  - s3:ReplicateDelete
+                  - s3:ReplicateTags
+                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-replica-${AWS::AccountId}/*'
+
+  # Replica bucket lives in the secondary region — deployed by the secondary stack
+  DocumentsReplicaBucket:
+    Type: AWS::S3::Bucket
+    Condition: IsSecondary
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-aerolink-documents-replica-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled   # versioning required for replication destination
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # ============================================================
+  # Frontend S3 bucket + CloudFront distribution
+  # ============================================================
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${EnvironmentName}-aerolink-frontend-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendBucketOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${EnvironmentName}-frontend-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub '${EnvironmentName} AeroLink frontend + API CDN'
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        Aliases: !If
+          - HasDomain
+          - - !Ref DomainName
+          - !Ref AWS::NoValue
+        ViewerCertificate: !If
+          - HasCert
+          - AcmCertificateArn: !Ref CertificateArn
+            SslSupportMethod: sni-only
+            MinimumProtocolVersion: TLSv1.2_2021
+          - CloudFrontDefaultCertificate: true
+        DefaultRootObject: index.html
+        Origins:
+          # Origin 1: S3 frontend SPA
+          - Id: frontend-s3
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !GetAtt FrontendBucketOAC.Id
+          # Origin 2: API (via Global Accelerator → public ALB → ECS)
+          - Id: api-origin
+            DomainName: !GetAtt PublicALB.DNSName
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+        DefaultCacheBehavior:
+          TargetOriginId: frontend-s3
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6   # CachingOptimized
+          OriginRequestPolicyId: 88a5eaf4-2fd4-4709-b370-b4c650ea3fcf  # CORS-S3Origin
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+        CacheBehaviors:
+          # API calls bypass cache entirely
+          - PathPattern: '/api/*'
+            TargetOriginId: api-origin
+            ViewerProtocolPolicy: redirect-to-https
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # AllViewerExceptHostHeader
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            CachedMethods: [GET, HEAD]
+            Compress: true
+        CustomErrorResponses:
+          # SPA routing — serve index.html for all 403/404s
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 0
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aerolink-cdn'
+
+  # ============================================================
+  # AWS Global Accelerator (primary region only — global resource)
+  # ============================================================
+  GlobalAccelerator:
+    Type: AWS::GlobalAccelerator::Accelerator
+    Condition: IsPrimary
+    Properties:
+      Name: !Sub '${EnvironmentName}-aerolink-ga'
+      Enabled: true
+      IpAddressType: IPV4
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-aerolink-ga'
+
+  GlobalAcceleratorListener:
+    Type: AWS::GlobalAccelerator::Listener
+    Condition: IsPrimary
+    Properties:
+      AcceleratorArn: !Ref GlobalAccelerator
+      Protocol: TCP
+      PortRanges:
+        - FromPort: 443
+          ToPort: 443
+        - FromPort: 80
+          ToPort: 80
+
+  # Primary endpoint group — contains the primary region ALB
+  # Add SecondaryALBArn parameter after secondary stack is deployed to add the second endpoint
+  GlobalAcceleratorEndpointGroup:
+    Type: AWS::GlobalAccelerator::EndpointGroup
+    Condition: IsPrimary
+    Properties:
+      ListenerArn: !Ref GlobalAcceleratorListener
+      EndpointGroupRegion: !Ref PrimaryRegion
+      TrafficDialPercentage: 100
+      HealthCheckProtocol: HTTPS
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 10
+      ThresholdCount: 3
+      EndpointConfigurations:
+        - !If
+          - HasSecondaryALB
+          - EndpointId: !Ref SecondaryALBArn
+            Weight: 50
+            ClientIPPreservationEnabled: true
+          - !Ref AWS::NoValue
+        - EndpointId: !GetAtt PublicALB.LoadBalancerArn
+          Weight: 50
+          ClientIPPreservationEnabled: true
+
+  # ============================================================
+  # Route 53 — health checks + failover alias records
+  # ============================================================
+  PrimaryHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Condition: HasDomain
+    Properties:
+      HealthCheckConfig:
+        Type: HTTPS
+        FullyQualifiedDomainName: !GetAtt PublicALB.DNSName
+        ResourcePath: /health
+        Port: 443
+        RequestInterval: 10
+        FailureThreshold: 3
+      HealthCheckTags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-primary-health-check'
+
+  Route53FailoverRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDomain
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      SetIdentifier: !Sub '${EnvironmentName}-${AWS::Region}'
+      Failover: !If [IsPrimary, PRIMARY, SECONDARY]
+      HealthCheckId: !Ref PrimaryHealthCheck
+      AliasTarget:
+        # Primary: alias to Global Accelerator; Secondary: alias to regional PublicALB
+        DNSName: !If
+          - IsPrimary
+          - !GetAtt GlobalAccelerator.DnsName
+          - !GetAtt PublicALB.DNSName
+        EvaluateTargetHealth: true
+        HostedZoneId: !If
+          - IsPrimary
+          - Z2BJ6XQ5FK7U4H   # Global Accelerator hosted zone ID (fixed value)
+          - !GetAtt PublicALB.CanonicalHostedZoneID
+
 # ============================================================
 # Outputs
 # ============================================================
@@ -2140,3 +2926,41 @@ Outputs:
   CognitoIssuerUrl:
     Description: Cognito token issuer URL (used for JWKS discovery)
     Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+
+  PublicALBDNSName:
+    Description: Internet-facing ALB DNS name (target for Global Accelerator)
+    Value: !GetAtt PublicALB.DNSName
+    Export:
+      Name: !Sub '${EnvironmentName}-PublicALBDNSName'
+
+  PublicALBArn:
+    Description: Internet-facing ALB ARN — pass as SecondaryALBArn when updating primary stack
+    Value: !GetAtt PublicALB.LoadBalancerArn
+    Export:
+      Name: !Sub '${EnvironmentName}-PublicALBArn'
+
+  CloudFrontDomainName:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub '${EnvironmentName}-CloudFrontDomain'
+
+  GlobalAcceleratorDNS:
+    Condition: IsPrimary
+    Description: Global Accelerator anycast DNS name — use as CNAME or Route 53 alias target
+    Value: !GetAtt GlobalAccelerator.DnsName
+    Export:
+      Name: !Sub '${EnvironmentName}-GlobalAcceleratorDNS'
+
+  FrontendBucketName:
+    Description: S3 bucket for the frontend SPA — deploy built assets here
+    Value: !Ref FrontendBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-FrontendBucket'
+
+  RDSReadReplicaEndpoint:
+    Condition: IsSecondary
+    Description: Read replica RDS endpoint (secondary region)
+    Value: !GetAtt DBReadReplica.Endpoint.Address
+    Export:
+      Name: !Sub '${EnvironmentName}-RDSReadReplicaEndpoint'

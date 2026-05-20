@@ -220,6 +220,29 @@ for ROLE in passenger admin airline-staff airport-operator; do
   echo "Created test user: $USERNAME (group: $ROLE, password: Test1234!)"
 done
 
+_create_named_user() {
+  local USERNAME="$1" EMAIL="$2" GROUP="$3"
+  awslocal cognito-idp admin-create-user \
+    --user-pool-id "$POOL_ID" --username "$USERNAME" \
+    --user-attributes Name=email,Value="$EMAIL" Name=email_verified,Value=true \
+    --message-action SUPPRESS
+  awslocal cognito-idp admin-set-user-password \
+    --user-pool-id "$POOL_ID" --username "$USERNAME" --password "Test1234!" --permanent
+  awslocal cognito-idp admin-add-user-to-group \
+    --user-pool-id "$POOL_ID" --username "$USERNAME" --group-name "$GROUP"
+  awslocal cognito-idp admin-get-user \
+    --user-pool-id "$POOL_ID" --username "$USERNAME" \
+    --query 'UserAttributes[?Name==`sub`].Value|[0]' --output text
+}
+
+# Create real named users — existing accounts with DB history.
+TESTUSER_SUB=$(_create_named_user   "testuser"   "test@aerolink.com"       "admin")
+DELTASTAFF_SUB=$(_create_named_user "deltastaff" "staff@delta.com"          "airline-staff")
+PARTNERAPI_SUB=$(_create_named_user "partnerapi" "partner@airlines.com"     "partner-api")
+SUPERADMIN_SUB=$(_create_named_user "superadmin" "superadmin@aerolink.com"  "admin")
+SYSADMIN_SUB=$(_create_named_user   "sysadmin"   "sysadmin@aerolink.com"    "admin")
+echo "Created named users: testuser deltastaff partnerapi superadmin sysadmin"
+
 # Create ranjana — real user with booking history in the DB.
 # Her Cognito sub changes on every LocalStack restart (Cognito always assigns a new UUID).
 # We write RANJANA_SUB to cognito.env so setup-local-cognito.sh can remap the DB.
@@ -251,6 +274,11 @@ cat > "$CONFIG_DIR/cognito.env" <<EOF
 COGNITO_USER_POOL_ID=${POOL_ID}
 COGNITO_CLIENT_ID=${CLIENT_ID}
 RANJANA_SUB=${RANJANA_SUB}
+TESTUSER_SUB=${TESTUSER_SUB}
+DELTASTAFF_SUB=${DELTASTAFF_SUB}
+PARTNERAPI_SUB=${PARTNERAPI_SUB}
+SUPERADMIN_SUB=${SUPERADMIN_SUB}
+SYSADMIN_SUB=${SYSADMIN_SUB}
 EOF
 echo "Wrote Cognito IDs to $CONFIG_DIR/cognito.env"
 

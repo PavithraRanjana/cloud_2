@@ -1,6 +1,6 @@
 #!/bin/bash
 # Creates frontend/.env.local with LocalStack Cognito IDs.
-# Also remaps ranjana's historical DB data to her current Cognito sub.
+# Also remaps named users' DB IDs to their current Cognito subs.
 # Run this after "docker-compose up localstack" and the health check passes.
 
 set -e
@@ -28,35 +28,56 @@ echo "Created $FRONTEND_ENV"
 echo "  COGNITO_USER_POOL_ID = ${COGNITO_USER_POOL_ID}"
 echo "  COGNITO_CLIENT_ID    = ${COGNITO_CLIENT_ID}"
 
-# ── Remap ranjana's DB data to her current Cognito sub ───────────────────────
-# LocalStack assigns a new random sub each restart, so we look up her current
-# user_id in the DB (users.username='ranjana') and update it to the new sub.
-if [ -n "${RANJANA_SUB}" ]; then
-  echo ""
-  echo "Syncing ranjana's DB user_id → ${RANJANA_SUB} ..."
+# ── Remap named users' DB IDs to their current Cognito subs ──────────────────
+# LocalStack assigns new random subs each restart.  For each named user we look
+# up their current users.id (by username) and update it — plus any bookings,
+# payments, and passenger_profiles that reference it.
+remap_user() {
+  local USERNAME="$1"
+  local NEW_SUB="$2"
+
+  if [ -z "$NEW_SUB" ]; then
+    echo "  Skipping $USERNAME — sub not found in cognito.env"
+    return
+  fi
+
   docker exec cloud_2-postgres-1 psql -U aerolink -d aerolink -q -c "
     DO \$\$
     DECLARE old_id uuid;
     BEGIN
-      SELECT id INTO old_id FROM users WHERE username = 'ranjana';
-      IF old_id IS NULL OR old_id::text = '${RANJANA_SUB}' THEN
-        RAISE NOTICE 'ranjana already up-to-date or not found, skipping.';
+      SELECT id INTO old_id FROM users WHERE username = '${USERNAME}';
+      IF old_id IS NULL OR old_id::text = '${NEW_SUB}' THEN
+        RAISE NOTICE '${USERNAME}: already up-to-date, skipping.';
         RETURN;
       END IF;
-      UPDATE bookings           SET user_id = '${RANJANA_SUB}' WHERE user_id = old_id;
-      UPDATE payments           SET user_id = '${RANJANA_SUB}' WHERE user_id = old_id;
-      UPDATE passenger_profiles SET user_id = '${RANJANA_SUB}' WHERE user_id = old_id;
-      UPDATE users              SET id      = '${RANJANA_SUB}' WHERE id      = old_id;
-      RAISE NOTICE 'Remapped ranjana from % to ${RANJANA_SUB}', old_id;
+      UPDATE bookings           SET user_id = '${NEW_SUB}' WHERE user_id = old_id;
+      UPDATE payments           SET user_id = '${NEW_SUB}' WHERE user_id = old_id;
+      UPDATE passenger_profiles SET user_id = '${NEW_SUB}' WHERE user_id = old_id;
+      UPDATE users              SET id      = '${NEW_SUB}' WHERE id      = old_id;
+      RAISE NOTICE '${USERNAME}: remapped % → ${NEW_SUB}', old_id;
     END;
     \$\$;
-  " 2>&1 | grep -v "^$"
-  echo "  Done."
-fi
+  " 2>&1 | grep NOTICE | sed 's/.*NOTICE:  /  /'
+}
+
+echo ""
+echo "Syncing user IDs to current Cognito subs..."
+remap_user "ranjana"    "${RANJANA_SUB}"
+remap_user "testuser"   "${TESTUSER_SUB}"
+remap_user "deltastaff" "${DELTASTAFF_SUB}"
+remap_user "partnerapi" "${PARTNERAPI_SUB}"
+remap_user "superadmin" "${SUPERADMIN_SUB}"
+remap_user "sysadmin"   "${SYSADMIN_SUB}"
+echo "Done."
 
 echo ""
 echo "Restart the Vite dev server (npm run dev) for the changes to take effect."
 echo ""
-echo "Test users (password: Test1234!):"
+echo "Users (password: Test1234!):"
+echo "  ranjana      — passenger (booking history)"
+echo "  testuser     — admin"
+echo "  deltastaff   — airline-staff"
+echo "  partnerapi   — partner-api"
+echo "  superadmin   — admin"
+echo "  sysadmin     — admin"
 echo "  test-passenger / test-admin / test-airline-staff / test-airport-operator"
-echo "  ranjana  (passenger, real booking history)"

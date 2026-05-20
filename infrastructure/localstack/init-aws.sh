@@ -220,6 +220,29 @@ for ROLE in passenger admin airline-staff airport-operator; do
   echo "Created test user: $USERNAME (group: $ROLE, password: Test1234!)"
 done
 
+# Create ranjana — real user with booking history in the DB.
+# Her Cognito sub changes on every LocalStack restart (Cognito always assigns a new UUID).
+# We write RANJANA_SUB to cognito.env so setup-local-cognito.sh can remap the DB.
+awslocal cognito-idp admin-create-user \
+  --user-pool-id "$POOL_ID" \
+  --username "ranjana" \
+  --user-attributes Name=email,Value=dranjana56@gmail.com Name=email_verified,Value=true \
+  --message-action SUPPRESS
+awslocal cognito-idp admin-set-user-password \
+  --user-pool-id "$POOL_ID" \
+  --username "ranjana" \
+  --password "Test1234!" \
+  --permanent
+awslocal cognito-idp admin-add-user-to-group \
+  --user-pool-id "$POOL_ID" \
+  --username "ranjana" \
+  --group-name "passenger"
+RANJANA_SUB=$(awslocal cognito-idp admin-get-user \
+  --user-pool-id "$POOL_ID" \
+  --username "ranjana" \
+  --query 'UserAttributes[?Name==`sub`].Value|[0]' --output text)
+echo "Created user: ranjana (passenger, password: Test1234!, sub: $RANJANA_SUB)"
+
 # Write IDs to shared config so services can pick them up via env_file
 # This file's presence also signals the health check that init is complete.
 CONFIG_DIR=/etc/localstack/init/localstack-config
@@ -227,6 +250,7 @@ mkdir -p "$CONFIG_DIR"
 cat > "$CONFIG_DIR/cognito.env" <<EOF
 COGNITO_USER_POOL_ID=${POOL_ID}
 COGNITO_CLIENT_ID=${CLIENT_ID}
+RANJANA_SUB=${RANJANA_SUB}
 EOF
 echo "Wrote Cognito IDs to $CONFIG_DIR/cognito.env"
 

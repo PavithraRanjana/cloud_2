@@ -43,6 +43,7 @@ export function LoginPage() {
 
         {IS_HOSTED_UI ? (
           /* ── Production: redirect to Cognito Hosted UI ── */
+          <>
           <button
             onClick={() => loginWithCognito()}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
@@ -76,6 +77,7 @@ export function LoginPage() {
               Sign up
             </button>
           </p>
+          </>
         ) : (
           /* ── Local dev: username/password form → LocalStack ── */
           <form onSubmit={handleLocalSubmit} className="space-y-4">

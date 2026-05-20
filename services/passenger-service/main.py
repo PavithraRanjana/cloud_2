@@ -9,15 +9,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from shared.health import check_db, check_redis
 import httpx
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from fastapi.security import APIKeyHeader
 from shared.auth import get_current_user
+from shared.resilience import async_retry
 from shared.encryption import encrypt_field, decrypt_field
 from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import PassengerProfile, GDPRConsent
 from schemas import (ProfileCreate, ProfileUpdate, ProfileResponse,
@@ -91,13 +94,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Passenger Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="passenger-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.post("/api/v1/passengers/profile", response_model=ProfileResponse, status_code=201)
@@ -249,16 +253,25 @@ async def delete_profile(request: Request,
                        detail="GDPR right to erasure exercised - profile and consents deleted",
                        ip_address=client_ip)
 
-    # Cascade: request deletion from other services
+    # Cascade: request deletion from other services (GDPR right to erasure).
+    # Failures are logged but do not block local deletion — a separate reconciliation
+    # process should retry any cascades that did not return 2xx.
     for service_url, path in [
         (config.booking_service_url, f"/api/v1/bookings/user/{current_user['sub']}/anonymize"),
         (config.notification_service_url, f"/api/v1/notifications/user/{current_user['sub']}/anonymize"),
     ]:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(f"{service_url}{path}")
-        except Exception:
-            pass  # Best-effort cascade
+            async for attempt in async_retry():
+                with attempt:
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        resp = await client.post(f"{service_url}{path}")
+                        resp.raise_for_status()
+        except Exception as e:
+            logger.error("gdpr_cascade_failed",
+                         service_url=service_url,
+                         path=path,
+                         user_id=current_user["sub"],
+                         error=str(e))
 
     redis_delete(redis_client, f"profile:{current_user['sub']}")
     await db.delete(profile)

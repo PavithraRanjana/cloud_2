@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from shared.health import check_db, check_redis
 import httpx
 import pybreaker
 import boto3
@@ -23,6 +24,7 @@ from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_set_nx, redis_get_json, redis_set_json
 from shared.resilience import create_circuit_breaker, async_retry
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import Payment, PaymentStatus, PaymentMethod
 from schemas import PaymentCreate, PaymentResponse, RefundRequest
@@ -120,6 +122,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Payment Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 def _to_response(p: Payment) -> PaymentResponse:
@@ -184,10 +187,10 @@ def simulate_payment_processing() -> tuple[bool, str]:
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="payment-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.post("/api/v1/payments", response_model=PaymentResponse, status_code=201)

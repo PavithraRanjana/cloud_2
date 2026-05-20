@@ -10,12 +10,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from shared.health import check_db, check_redis
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user, RoleChecker
 from shared.events import EventPublisher
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import Baggage, BaggageStatus
 from schemas import BaggageRegister, BaggageResponse, BaggageStatusUpdate
@@ -80,13 +82,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Baggage Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="baggage-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.get("/api/v1/baggage", response_model=list[BaggageResponse])

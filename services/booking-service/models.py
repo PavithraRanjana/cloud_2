@@ -29,7 +29,7 @@ class Booking(Base):
     cabin_class = Column(String(20), nullable=False, default="economy")
     num_passengers = Column(Integer, default=1)
     total_price = Column(Float, nullable=False)
-    status = Column(SAEnum(BookingStatus), default=BookingStatus.PENDING, nullable=False)
+    status = Column(SAEnum(BookingStatus), default=BookingStatus.PENDING, nullable=False, index=True)
     payment_id = Column(UUID(as_uuid=True), nullable=True)
     seat_numbers = Column(Text, nullable=True)
     special_requests = Column(Text, nullable=True)

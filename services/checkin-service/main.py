@@ -10,6 +10,8 @@ from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from shared.health import check_db, check_redis
 import httpx
 import pybreaker
 import boto3
@@ -22,6 +24,7 @@ from shared.events import EventPublisher, _boto3_kwargs as _aws_kwargs
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
 from shared.resilience import create_circuit_breaker, async_retry
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import CheckIn, CheckInStatus
 from schemas import CheckInRequest, CheckInResponse
@@ -127,13 +130,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Check-In Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="checkin-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.post("/api/v1/checkin", response_model=CheckInResponse, status_code=201)
@@ -157,8 +161,12 @@ async def check_in(data: CheckInRequest,
         boarding_pass_url=f"/api/v1/checkin/{data.booking_id}/boarding-pass",
     )
     db.add(checkin)
-    await db.flush()
-    await db.refresh(checkin)
+    try:
+        await db.flush()
+        await db.refresh(checkin)
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Already checked in for this booking")
 
     # Cache the new check-in record
     redis_set_json(redis_client, f"checkin:{data.booking_id}", _to_response(checkin).dict(), CHECKIN_CACHE_TTL)

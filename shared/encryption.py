@@ -1,18 +1,26 @@
 """
 Field-level encryption for PII and PCI-sensitive data.
 Uses Fernet symmetric encryption (AES-128-CBC with HMAC-SHA256).
-In production, keys would come from AWS KMS.
+In production, set ENCRYPTION_KEY env var (any passphrase; use Secrets Manager).
 """
 import base64
 import hashlib
+import os
+import warnings
 from cryptography.fernet import Fernet
 
-# Derive a Fernet key from a passphrase (in production, use AWS KMS)
 _DEFAULT_PASSPHRASE = "aerolink-encryption-key-change-in-production"
+_passphrase = os.environ.get("ENCRYPTION_KEY", "")
+if not _passphrase:
+    warnings.warn(
+        "ENCRYPTION_KEY env var is not set — using insecure default passphrase. "
+        "Set ENCRYPTION_KEY in production.",
+        stacklevel=1,
+    )
+    _passphrase = _DEFAULT_PASSPHRASE
 
 
 def _derive_key(passphrase: str) -> bytes:
-    """Derive a Fernet-compatible key from a passphrase."""
     digest = hashlib.sha256(passphrase.encode()).digest()
     return base64.urlsafe_b64encode(digest)
 
@@ -20,7 +28,7 @@ def _derive_key(passphrase: str) -> bytes:
 class FieldEncryptor:
     """Encrypts/decrypts individual fields for at-rest protection."""
 
-    def __init__(self, passphrase: str = _DEFAULT_PASSPHRASE):
+    def __init__(self, passphrase: str):
         self.fernet = Fernet(_derive_key(passphrase))
 
     def encrypt(self, plaintext: str) -> str:
@@ -36,8 +44,8 @@ class FieldEncryptor:
         return self.fernet.decrypt(ciphertext.encode()).decode()
 
 
-# Singleton instance
-_encryptor = FieldEncryptor()
+# Singleton instance — key comes from env var at import time
+_encryptor = FieldEncryptor(_passphrase)
 
 
 def encrypt_field(value: str) -> str:

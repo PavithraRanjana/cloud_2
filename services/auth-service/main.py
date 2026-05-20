@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from shared.health import check_db, check_redis
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
@@ -17,6 +18,7 @@ from shared.auth import (hash_password, verify_password, create_access_token,
 from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_incr_with_ttl, redis_delete
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import User, UserRole, generate_api_key
 from schemas import (UserRegister, UserLogin, TokenResponse,
@@ -57,6 +59,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Auth Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 def _rate_limit_key(username: str) -> str:
@@ -75,10 +78,10 @@ def _to_user_response(user: User) -> UserResponse:
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="auth-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.post("/api/v1/auth/register", response_model=UserResponse, status_code=201)

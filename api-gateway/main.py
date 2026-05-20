@@ -12,12 +12,18 @@ import structlog
 from shared.config import BaseConfig
 from shared.auth import decode_token
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 
 config = BaseConfig(service_name="api-gateway")
 setup_logging(config.service_name)
 logger = structlog.get_logger()
 
 START_TIME = time.time()
+
+# Partner API keys — comma-separated list in env var.
+# Empty = partner API key auth disabled (any x-api-key is rejected).
+_raw_keys = os.environ.get("PARTNER_API_KEYS", "")
+VALID_PARTNER_KEYS: set[str] = {k.strip() for k in _raw_keys.split(",") if k.strip()}
 
 # Route table: path prefix -> service URL
 ROUTES = {
@@ -41,10 +47,14 @@ PUBLIC_PATHS = {
 }
 
 app = FastAPI(title="AeroLink API Gateway", version="1.0.0")
+app.add_middleware(TraceMiddleware)
+
+_cors_origins_raw = os.environ.get("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,8 +97,8 @@ async def gateway_proxy(request: Request, path: str):
     if not is_public_path(full_path):
         auth_header = request.headers.get("authorization", "")
         if api_key:
-            # Partner API key authentication — key validated by downstream auth-service
-            pass
+            if api_key not in VALID_PARTNER_KEYS:
+                raise HTTPException(status_code=401, detail="Invalid API key")
         elif auth_header.startswith("Bearer "):
             try:
                 token = auth_header.split(" ", 1)[1]

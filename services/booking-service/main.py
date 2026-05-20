@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
+from shared.health import check_db, check_redis
 import httpx
 import pybreaker
 from shared.config import BaseConfig
@@ -20,6 +21,7 @@ from shared.resilience import create_circuit_breaker, async_retry
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete, redis_set_nx
 import structlog
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import Booking, BookingStatus
 from schemas import BookingCreate, BookingResponse, BookingStatusUpdate, SeatAvailabilityResponse
@@ -115,6 +117,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Booking Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 # ── Protected inter-service helpers ─────────────────────────────────────────
@@ -143,10 +146,10 @@ async def _flight_update_seats(flight_id: str, cabin_class: str, change: int) ->
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="booking-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy", "flight-service": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.post("/api/v1/bookings", response_model=BookingResponse, status_code=201)
@@ -345,13 +348,21 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(get_curre
     if booking.status in (BookingStatus.CANCELLED, BookingStatus.REFUNDED):
         raise HTTPException(status_code=400, detail="Booking already cancelled")
 
-    # Compensating transaction: release seats back (best-effort, with retry)
+    # Compensating transaction: release seats back (saga compensation)
     try:
         await flight_breaker.call_async(
             _flight_update_seats, str(booking.flight_id), booking.cabin_class, booking.num_passengers
         )
-    except Exception:
-        pass
+    except Exception as e:
+        # Seat release failed — log for manual reconciliation. The booking is still
+        # cancelled (correct from the customer's perspective) but inventory is
+        # understated until the flight service recovers or a reconciliation job runs.
+        logger.error("seat_release_failed_on_cancel",
+                     booking_id=booking_id,
+                     flight_id=str(booking.flight_id),
+                     cabin_class=booking.cabin_class,
+                     num_passengers=booking.num_passengers,
+                     error=str(e))
 
     booking.status = BookingStatus.CANCELLED
     await db.flush()

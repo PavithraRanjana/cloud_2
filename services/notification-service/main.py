@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from shared.health import check_db, check_redis
 import boto3
 import structlog
 from sqlalchemy import create_engine
@@ -21,6 +22,7 @@ from shared.auth import get_current_user, RoleChecker
 from shared.events import EventConsumer
 from shared.cache import create_redis_client, redis_set_nx
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import Notification, NotificationType, NotificationStatus
 from schemas import NotificationResponse, NotificationCreate
@@ -167,6 +169,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Notification Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 async def get_db():
@@ -272,18 +275,26 @@ def poll_events():
                     process_event(msg["body"])
                     consumer.ack(msg["receipt_handle"])
                 except Exception as e:
-                    logger.error("event_processing_failed", error=str(e))
+                    logger.error("event_processing_failed", error=str(e),
+                                 message_body=msg.get("body", "")[:200])
+                    # Forward to DLQ so the message is not silently dropped.
+                    # Ack the main queue to prevent infinite redelivery.
+                    try:
+                        _sqs.send_message(QueueUrl=DLQ_URL, MessageBody=msg["body"])
+                    except Exception as dlq_err:
+                        logger.error("dlq_send_failed", error=str(dlq_err))
+                    consumer.ack(msg["receipt_handle"])
         except Exception as e:
             logger.error("poll_error", error=str(e))
             time.sleep(10)
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="notification-service",
                           uptime_seconds=time.time() - START_TIME,
-                          dependencies={"database": "healthy", "sqs": "healthy",
-                                        "redis": "healthy" if redis_client else "unavailable"})
+                          dependencies={"database": await check_db(db),
+                                        "redis": check_redis(redis_client)})
 
 
 @app.post("/api/v1/notifications", response_model=NotificationResponse, status_code=201)

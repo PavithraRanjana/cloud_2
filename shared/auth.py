@@ -1,5 +1,6 @@
 import os
 import time
+import warnings
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -13,6 +14,14 @@ security = HTTPBearer()
 
 DEFAULT_SECRET = "aerolink-jwt-secret-key-change-in-production"
 DEFAULT_ALGORITHM = "HS256"
+
+_jwt_secret = os.environ.get("JWT_SECRET", "")
+if not _jwt_secret:
+    warnings.warn(
+        "JWT_SECRET env var is not set — HS256 fallback will use an insecure default. "
+        "Set JWT_SECRET in production.",
+        stacklevel=1,
+    )
 
 # Cognito — populated from env vars in ECS; empty = local HS256 mode
 _COGNITO_USER_POOL_ID = os.environ.get("COGNITO_USER_POOL_ID", "")

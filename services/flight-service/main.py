@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
+from shared.health import check_db, check_redis
 import redis
 import structlog
 from shared.config import BaseConfig
@@ -16,6 +17,7 @@ from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user, RoleChecker
 from shared.events import EventPublisher
 from shared.logging import setup_logging
+from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
 from models import Flight, FlightStatus
 from schemas import FlightCreate, FlightUpdate, FlightResponse, SeatUpdate
@@ -96,6 +98,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="AeroLink Flight Service", version="1.0.0", lifespan=lifespan)
+app.add_middleware(TraceMiddleware)
 
 
 def _to_response(f: Flight) -> FlightResponse:
@@ -132,11 +135,10 @@ def _to_dict(f: Flight) -> dict:
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
-    deps = {"database": "healthy"}
-    deps["redis_cache"] = "healthy" if redis_client else "unavailable"
+async def health(db: AsyncSession = Depends(get_db)):
     return HealthResponse(service="flight-service", uptime_seconds=time.time() - START_TIME,
-                          dependencies=deps)
+                          dependencies={"database": await check_db(db),
+                                        "redis_cache": check_redis(redis_client)})
 
 
 @app.get("/api/v1/flights")

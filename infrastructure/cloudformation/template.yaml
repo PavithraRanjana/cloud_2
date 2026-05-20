@@ -565,7 +565,7 @@ Resources:
       VPCSecurityGroups:
         - !Ref RDSSecurityGroup
       DBSubnetGroupName: !Ref DBSubnetGroup
-      BackupRetentionPeriod: 7
+      BackupRetentionPeriod: 30
       DeletionProtection: true
       PubliclyAccessible: false
       CopyTagsToSnapshot: true
@@ -595,7 +595,7 @@ Resources:
       AutomaticFailoverEnabled: true
       MultiAZEnabled: true
       AtRestEncryptionEnabled: true
-      TransitEncryptionEnabled: false
+      TransitEncryptionEnabled: true
       CacheSubnetGroupName: !Ref RedisSubnetGroup
       SecurityGroupIds:
         - !Ref RedisSecurityGroup
@@ -715,10 +715,25 @@ Resources:
                   - logs:PutLogEvents
                 Resource: '*'
 
-  ECSTaskRole:
+  # Least-privilege IAM roles — one per service group based on actual AWS SDK usage.
+  # api-gateway and auth-service make no direct AWS SDK calls.
+  ECSBaseTaskRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${EnvironmentName}-ecs-task-role'
+      RoleName: !Sub '${EnvironmentName}-ecs-base-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+
+  # flight, baggage, booking, passenger — EventBridge only
+  ECSEventPublisherRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-event-publisher-role'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -727,7 +742,7 @@ Resources:
               Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: AerolinkServicePermissions
+        - PolicyName: EventBridgePublish
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
@@ -736,6 +751,88 @@ Resources:
                 Action:
                   - events:PutEvents
                 Resource: !GetAtt AerolinkEventBus.Arn
+
+  # payment — EventBridge + DynamoDB idempotency table
+  ECSPaymentTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-payment-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PaymentServicePermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EventBridge
+                Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt AerolinkEventBus.Arn
+              - Sid: DynamoDB
+                Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:Query
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                Resource: !GetAtt PaymentIdempotencyTable.Arn
+
+  # checkin — EventBridge + S3 boarding-pass documents
+  ECSCheckinTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-checkin-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CheckinServicePermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: EventBridge
+                Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: !GetAtt AerolinkEventBus.Arn
+              - Sid: S3
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DocumentsBucket.Arn
+                  - !Sub '${DocumentsBucket.Arn}/*'
+
+  # notification — SQS polling (main queue + DLQ)
+  ECSNotificationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${EnvironmentName}-ecs-notification-task-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: NotificationServicePermissions
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
               - Sid: SQS
                 Effect: Allow
                 Action:
@@ -747,24 +844,6 @@ Resources:
                 Resource:
                   - !GetAtt NotificationsQueue.Arn
                   - !GetAtt NotificationsDLQ.Arn
-              - Sid: S3
-                Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:PutObject
-                  - s3:ListBucket
-                Resource:
-                  - !GetAtt DocumentsBucket.Arn
-                  - !Sub '${DocumentsBucket.Arn}/*'
-              - Sid: DynamoDB
-                Effect: Allow
-                Action:
-                  - dynamodb:GetItem
-                  - dynamodb:PutItem
-                  - dynamodb:Query
-                  - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
-                Resource: !GetAtt PaymentIdempotencyTable.Arn
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -1192,7 +1271,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSBaseTaskRole.Arn
       ContainerDefinitions:
         - Name: api-gateway
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/api-gateway:${ContainerImageTag}'
@@ -1228,6 +1307,10 @@ Resources:
               Value: !Ref CognitoUserPoolClient
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
+            - Name: CORS_ORIGINS
+              Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com,https://${DomainName}'
+            - Name: PARTNER_API_KEYS
+              Value: ''
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1251,7 +1334,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSBaseTaskRole.Arn
       ContainerDefinitions:
         - Name: auth-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/auth-service:${ContainerImageTag}'
@@ -1300,7 +1383,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSEventPublisherRole.Arn
       ContainerDefinitions:
         - Name: flight-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/flight-service:${ContainerImageTag}'
@@ -1349,7 +1432,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSEventPublisherRole.Arn
       ContainerDefinitions:
         - Name: booking-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/booking-service:${ContainerImageTag}'
@@ -1402,7 +1485,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSPaymentTaskRole.Arn
       ContainerDefinitions:
         - Name: payment-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/payment-service:${ContainerImageTag}'
@@ -1457,7 +1540,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSEventPublisherRole.Arn
       ContainerDefinitions:
         - Name: baggage-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/baggage-service:${ContainerImageTag}'
@@ -1506,7 +1589,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSCheckinTaskRole.Arn
       ContainerDefinitions:
         - Name: checkin-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/checkin-service:${ContainerImageTag}'
@@ -1561,7 +1644,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSEventPublisherRole.Arn
       ContainerDefinitions:
         - Name: passenger-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/passenger-service:${ContainerImageTag}'
@@ -1616,7 +1699,7 @@ Resources:
       Cpu: !Ref ECSTaskCPU
       Memory: !Ref ECSTaskMemory
       ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
-      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      TaskRoleArn: !GetAtt ECSNotificationTaskRole.Arn
       ContainerDefinitions:
         - Name: notification-service
           Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/aerolink/notification-service:${ContainerImageTag}'

@@ -10,6 +10,7 @@
 
 const DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN ?? '';
 const CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID ?? '';
+const POOL_ID = import.meta.env.VITE_COGNITO_USER_POOL_ID ?? '';
 const LOCALSTACK_URL = import.meta.env.VITE_LOCALSTACK_URL ?? 'http://localhost:4566';
 
 export const IS_HOSTED_UI = Boolean(DOMAIN && CLIENT_ID);
@@ -190,6 +191,46 @@ export async function localDevLogin(username: string, password: string): Promise
     access_token: data.AuthenticationResult.AccessToken,
     refresh_token: data.AuthenticationResult.RefreshToken,
   };
+}
+
+// ── Local dev self-service sign-up ───────────────────────────────────────────
+
+/** Sign up a new user directly against LocalStack Cognito (local dev only).
+ *  Auto-confirms the account and adds them to the passenger group. */
+export async function localDevSignUp(username: string, email: string, password: string): Promise<void> {
+  const localstack = (target: string, body: unknown) =>
+    fetch(LOCALSTACK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+  const signUpResp = await localstack('SignUp', {
+    ClientId: CLIENT_ID,
+    Username: username,
+    Password: password,
+    UserAttributes: [
+      { Name: 'email', Value: email },
+      { Name: 'email_verified', Value: 'true' },
+    ],
+  });
+  if (!signUpResp.ok) {
+    const err = await signUpResp.json().catch(() => ({}));
+    throw new Error((err as { message?: string }).message ?? 'Sign up failed');
+  }
+
+  // LocalStack doesn't send emails — auto-confirm immediately
+  await localstack('AdminConfirmSignUp', { UserPoolId: POOL_ID, Username: username });
+
+  // Default role: passenger
+  await localstack('AdminAddUserToGroup', {
+    UserPoolId: POOL_ID,
+    Username: username,
+    GroupName: 'passenger',
+  });
 }
 
 // ── JWT decoding (client-side, no verification) ───────────────────────────────

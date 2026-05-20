@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { IS_HOSTED_UI, localDevLogin, redirectToSignUp } from '../lib/cognito';
 
 export function LoginPage() {
   const { loginWithCognito, setTokens } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const justRegistered = (location.state as { registered?: boolean } | null)?.registered;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,6 +36,12 @@ export function LoginPage() {
         <p className="mb-6 text-sm text-gray-500">
           {IS_HOSTED_UI ? 'Sign in to continue' : 'Local dev — sign in via LocalStack'}
         </p>
+
+        {justRegistered && (
+          <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+            Account created! Sign in below.
+          </div>
+        )}
 
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">

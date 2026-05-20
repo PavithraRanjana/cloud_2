@@ -235,14 +235,16 @@ done
 
 _create_named_user() {
   local USERNAME="$1" EMAIL="$2" GROUP="$3"
+  # Redirect to stderr so the JSON output is not captured when called as $(...)
   awslocal cognito-idp admin-create-user \
     --user-pool-id "$POOL_ID" --username "$USERNAME" \
     --user-attributes Name=email,Value="$EMAIL" Name=email_verified,Value=true \
-    --message-action SUPPRESS
+    --message-action SUPPRESS >&2
   awslocal cognito-idp admin-set-user-password \
-    --user-pool-id "$POOL_ID" --username "$USERNAME" --password "Test1234!" --permanent
+    --user-pool-id "$POOL_ID" --username "$USERNAME" --password "Test1234!" --permanent >&2
   awslocal cognito-idp admin-add-user-to-group \
-    --user-pool-id "$POOL_ID" --username "$USERNAME" --group-name "$GROUP"
+    --user-pool-id "$POOL_ID" --username "$USERNAME" --group-name "$GROUP" >&2
+  # Only the sub UUID goes to stdout
   awslocal cognito-idp admin-get-user \
     --user-pool-id "$POOL_ID" --username "$USERNAME" \
     --query 'UserAttributes[?Name==`sub`].Value|[0]' --output text

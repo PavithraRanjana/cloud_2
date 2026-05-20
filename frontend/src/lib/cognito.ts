@@ -55,13 +55,25 @@ export async function redirectToLogin(): Promise<void> {
   window.location.href = `https://${DOMAIN}/login?${params}`;
 }
 
-/** Redirect to the Cognito Hosted UI sign-up page. */
-export function redirectToSignUp(): void {
+/** Redirect to the Cognito Hosted UI sign-up page (with PKCE so the callback works). */
+export async function redirectToSignUp(): Promise<void> {
+  // Cognito's /signup page has a "Back to sign in" link that returns via /callback,
+  // so we need PKCE state stored before redirecting — same as redirectToLogin().
+  const verifier = randomBase64url(32);
+  const challenge = await sha256Base64url(verifier);
+  const state = randomBase64url(16);
+
+  sessionStorage.setItem('pkce_verifier', verifier);
+  sessionStorage.setItem('pkce_state', state);
+
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: CLIENT_ID,
     redirect_uri: getRedirectUri(),
     scope: 'openid email profile',
+    state,
+    code_challenge: challenge,
+    code_challenge_method: 'S256',
   });
   window.location.href = `https://${DOMAIN}/signup?${params}`;
 }
@@ -113,23 +125,43 @@ export async function exchangeCodeForTokens(code: string, state: string): Promis
 export async function refreshCognitoToken(
   refreshToken: string,
 ): Promise<{ id_token: string; access_token: string }> {
-  const tokenUrl = IS_HOSTED_UI
-    ? `https://${DOMAIN}/oauth2/token`
-    : `${LOCALSTACK_URL}/oauth2/token`;
+  if (IS_HOSTED_UI) {
+    // Production: use the standard OAuth2 token endpoint
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: CLIENT_ID,
+      refresh_token: refreshToken,
+    });
+    const resp = await fetch(`https://${DOMAIN}/oauth2/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body,
+    });
+    if (!resp.ok) throw new Error('Token refresh failed');
+    return resp.json();
+  }
 
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    client_id: CLIENT_ID,
-    refresh_token: refreshToken,
-  });
-
-  const resp = await fetch(tokenUrl, {
+  // Local dev: LocalStack doesn't implement /oauth2/token — use the native Cognito API
+  const resp = await fetch(LOCALSTACK_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body,
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+    },
+    body: JSON.stringify({
+      AuthFlow: 'REFRESH_TOKEN_AUTH',
+      ClientId: CLIENT_ID,
+      AuthParameters: { REFRESH_TOKEN: refreshToken },
+    }),
   });
   if (!resp.ok) throw new Error('Token refresh failed');
-  return resp.json();
+  const data = await resp.json() as {
+    AuthenticationResult: { IdToken: string; AccessToken: string };
+  };
+  return {
+    id_token: data.AuthenticationResult.IdToken,
+    access_token: data.AuthenticationResult.AccessToken,
+  };
 }
 
 // ── Local dev (LocalStack) ────────────────────────────────────────────────────

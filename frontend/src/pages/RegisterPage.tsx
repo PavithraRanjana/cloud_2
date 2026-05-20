@@ -11,7 +11,7 @@ export function RegisterPage() {
           <h1 className="mb-1 text-2xl font-bold text-gray-900">AeroLink</h1>
           <p className="mb-6 text-sm text-gray-500">Create your account</p>
           <button
-            onClick={redirectToSignUp}
+            onClick={() => { redirectToSignUp(); }}
             className="w-full rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
           >
             Create account with Google

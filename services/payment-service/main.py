@@ -332,8 +332,8 @@ async def process_payment(data: PaymentCreate, request: Request,
                     "passenger_name": passenger_name,
                     "loyalty_points_awarded": loyalty_points,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Failed to publish PaymentCompleted event", error=str(e))
     else:
         payment.status = PaymentStatus.FAILED
         payment.failure_reason = result
@@ -351,8 +351,8 @@ async def process_payment(data: PaymentCreate, request: Request,
                     "booking_id": data.booking_id,
                     "reason": result,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Failed to publish PaymentFailed event", error=str(e))
 
     await db.flush()
     await db.refresh(payment)
@@ -418,8 +418,8 @@ async def refund_payment(payment_id: str, data: RefundRequest, request: Request,
                 "passenger_email": current_user.get("email", ""),
                 "passenger_name": current_user.get("username", ""),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to publish PaymentRefunded event", error=str(e))
 
     return _to_response(payment)
 

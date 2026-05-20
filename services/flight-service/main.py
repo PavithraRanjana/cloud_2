@@ -269,8 +269,8 @@ async def create_flight(data: FlightCreate,
                 "flight_id": str(flight.id), "flight_number": flight.flight_number,
                 "action": "created",
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to publish FlightScheduleUpdated event", error=str(e))
 
     return _to_response(flight)
 
@@ -301,8 +301,8 @@ async def update_flight(flight_id: str, data: FlightUpdate,
                 "flight_id": str(flight.id), "flight_number": flight.flight_number,
                 "action": "updated", "changes": list(update_data.keys()),
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to publish FlightScheduleUpdated event", error=str(e))
 
     return _to_response(flight)
 
@@ -353,8 +353,8 @@ async def update_seats(flight_id: str, data: SeatUpdate,
                 "flight_id": str(flight.id), "cabin_class": data.cabin_class,
                 "available": new_count,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to publish SeatAvailabilityChanged event", error=str(e))
 
     return {"flight_id": flight_id, "cabin_class": data.cabin_class,
             "available_seats": new_count, "version": current_version + 1}

@@ -135,6 +135,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       localstack:
         condition: service_healthy
     healthcheck:
@@ -242,6 +244,7 @@ services:
       - FLIGHT_SERVICE_URL=http://flight-service:8002
       - AWS_ENDPOINT_URL=http://localstack:4566
       - REDIS_URL=redis://redis:6379/5
+      - S3_BUCKET=aerolink-documents
     env_file:
       - path: ./infrastructure/localstack/cognito.env
         required: false
@@ -299,6 +302,8 @@ services:
       - REDIS_URL=redis://redis:6379/7
       - ENABLE_SQS_POLLING=true
       - SES_SENDER_EMAIL=noreply@aerolink.com
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/aerolink-notifications
+      - SQS_DLQ_URL=http://localstack:4566/000000000000/aerolink-notifications-dlq
     env_file:
       - path: ./infrastructure/localstack/cognito.env
         required: false

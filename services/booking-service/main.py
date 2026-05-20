@@ -18,6 +18,7 @@ from shared.auth import get_current_user
 from shared.events import EventPublisher
 from shared.resilience import create_circuit_breaker, async_retry
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete, redis_set_nx
+import structlog
 from shared.logging import setup_logging
 from shared.schemas import HealthResponse
 from models import Booking, BookingStatus
@@ -25,6 +26,7 @@ from schemas import BookingCreate, BookingResponse, BookingStatusUpdate, SeatAva
 
 config = BaseConfig(service_name="booking-service")
 setup_logging(config.service_name)
+logger = structlog.get_logger()
 
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
@@ -229,8 +231,8 @@ async def create_booking(data: BookingCreate,
                     "total_price": booking.total_price,
                     "cabin_class": booking.cabin_class,
                 })
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Failed to publish BookingCreated event", error=str(e))
 
         # Invalidate booking list cache for this user
         redis_delete(redis_client, f"bookings:{current_user['sub']}", "bookings:admin")
@@ -368,8 +370,8 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(get_curre
                 "passenger_name": booking.passenger_name,
                 "passenger_email": booking.passenger_email,
             })
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to publish BookingCancelled event", error=str(e))
 
     return _to_response(booking)
 

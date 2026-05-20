@@ -40,7 +40,7 @@ SyncSessionFactory = sessionmaker(bind=_sync_engine)
 
 # Redis for deduplication — prevents double-send when SQS redelivers a message
 redis_client = create_redis_client(config.redis_url)
-DEDUP_TTL = 300  # 5-minute dedup window (SQS visibility timeout default is 30s)
+DEDUP_TTL = 3600  # 1-hour dedup window — longer than any realistic SQS redelivery cycle
 
 START_TIME = time.time()
 

@@ -123,6 +123,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('refresh_token', refreshToken);
     setToken(idToken);
     try { setUser(claimsToUser(decodeJwt(idToken))); } catch { /* malformed */ }
+
+    // Ensure a DB user record exists for this Cognito identity.
+    // Fire-and-forget: login proceeds even if this fails.
+    fetch('/api/v1/auth/cognito-sync', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${idToken}` },
+    }).catch(() => { /* non-blocking */ });
   }, []);
 
   return (

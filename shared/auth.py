@@ -133,7 +133,9 @@ def _verify_hs256_token(token: str) -> dict:
     """Local dev fallback: verify HS256 token with the shared JWT_SECRET."""
     secret = os.environ.get("JWT_SECRET", DEFAULT_SECRET)
     try:
-        return jwt.decode(token, secret, algorithms=["HS256"])
+        claims = jwt.decode(token, secret, algorithms=["HS256"])
+        claims["_token"] = token  # preserve for service-to-service forwarding
+        return claims
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail=f"Invalid token: {e}")

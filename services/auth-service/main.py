@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import uuid
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -8,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import (hash_password, verify_password, create_access_token,
@@ -172,6 +174,43 @@ async def get_me(current_user: dict = Depends(get_current_user),
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    return _to_user_response(user)
+
+
+@app.post("/api/v1/auth/cognito-sync", response_model=UserResponse, status_code=200)
+async def cognito_sync(current_user: dict = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_db)):
+    """Upsert the Cognito user into the local users table.
+
+    Called by the frontend on every login so that a DB record exists for new
+    Cognito sign-ups before any other service tries to reference users.id.
+    """
+    role_str = current_user.get("role", "passenger")
+    role = UserRole(role_str) if role_str in [r.value for r in UserRole] else UserRole.PASSENGER
+
+    stmt = (
+        pg_insert(User)
+        .values(
+            id=uuid.UUID(current_user["sub"]),
+            email=current_user.get("email", ""),
+            username=current_user.get("username", current_user["sub"]),
+            full_name=current_user.get("full_name", "") or current_user.get("username", ""),
+            hashed_password="!cognito-sso",  # placeholder; Cognito users never use password auth
+            role=role,
+            is_active=True,
+        )
+        .on_conflict_do_update(
+            index_elements=["id"],
+            set_=dict(
+                email=current_user.get("email", ""),
+                full_name=current_user.get("full_name", "") or current_user.get("username", ""),
+                role=role,
+            ),
+        )
+        .returning(User)
+    )
+    result = await db.execute(stmt)
+    user = result.scalar_one()
     return _to_user_response(user)
 
 

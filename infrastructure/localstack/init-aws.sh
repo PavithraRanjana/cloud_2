@@ -151,6 +151,19 @@ awslocal events put-targets \
 
 echo "Created rule: FlightScheduleUpdated -> notifications"
 
+# Rule 10: SeatAvailabilityChanged -> notification queue
+awslocal events put-rule \
+  --name seat-availability-to-notifications \
+  --event-bus-name aerolink-events \
+  --event-pattern '{"source":["flight-service"],"detail-type":["SeatAvailabilityChanged"]}'
+
+awslocal events put-targets \
+  --rule seat-availability-to-notifications \
+  --event-bus-name aerolink-events \
+  --targets "Id=notification-queue,Arn=$NOTIFICATION_QUEUE_ARN"
+
+echo "Created rule: SeatAvailabilityChanged -> notifications"
+
 # Create S3 bucket for boarding passes / documents
 awslocal s3 mb s3://aerolink-documents
 echo "Created S3 bucket: aerolink-documents"

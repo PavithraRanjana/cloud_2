@@ -1686,7 +1686,7 @@ Resources:
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
-              Value: !Ref EventBus
+              Value: aerolink-events
             - Name: COGNITO_USER_POOL_ID
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID

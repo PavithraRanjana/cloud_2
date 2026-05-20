@@ -905,6 +905,11 @@ Resources:
                 Action:
                   - s3:PutObject
                 Resource: !Sub '${DocumentsBucket.Arn}/*'
+              - Sid: CognitoGroups
+                Effect: Allow
+                Action:
+                  - cognito-idp:AdminAddUserToGroup
+                Resource: !GetAtt CognitoUserPool.Arn
 
   # ============================================================
   # ALB – Application Load Balancer (internal; fronted by API Gateway VPC Link)
@@ -1116,6 +1121,8 @@ Resources:
       MfaConfiguration: 'OFF'
       EmailConfiguration:
         EmailSendingAccount: COGNITO_DEFAULT
+      LambdaConfig:
+        PostConfirmation: !GetAtt CognitoPostConfirmationTrigger.Arn
       UserPoolTags:
         Project: AeroLink
         Environment: !Ref EnvironmentName
@@ -1324,6 +1331,8 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+            - Name: AWS_REGION
+              Value: !Ref 'AWS::Region'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1676,6 +1685,8 @@ Resources:
               Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
+            - Name: EVENT_BUS_NAME
+              Value: !Ref EventBus
             - Name: COGNITO_USER_POOL_ID
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
@@ -2225,6 +2236,50 @@ Resources:
   # ============================================================
   # Lambda Functions
   # ============================================================
+
+  # --- Lambda 0: Cognito Post-Confirmation Trigger ---
+  # Auto-assigns every newly confirmed user to the 'passenger' group so that
+  # cognito:groups is always present in their ID token for RBAC.
+  CognitoPostConfirmationTrigger:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${EnvironmentName}-cognito-post-confirmation'
+      Runtime: python3.10
+      Handler: index.handler
+      Timeout: 10
+      MemorySize: 128
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import boto3
+          import os
+
+          def handler(event, context):
+              if event.get('triggerSource', '') in (
+                  'PostConfirmation_ConfirmSignUp',
+                  'PostConfirmation_ConfirmForgotPassword',
+              ):
+                  client = boto3.client('cognito-idp', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-east-1'))
+                  try:
+                      client.admin_add_user_to_group(
+                          UserPoolId=event['userPoolId'],
+                          Username=event['userName'],
+                          GroupName='passenger',
+                      )
+                  except client.exceptions.ResourceNotFoundException:
+                      pass  # group not yet created during stack bootstrap
+              return event
+      Environment:
+        Variables:
+          AWS_DEFAULT_REGION: !Ref 'AWS::Region'
+
+  CognitoPostConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt CognitoPostConfirmationTrigger.Arn
+      Action: lambda:InvokeFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt CognitoUserPool.Arn
 
   # --- Lambda 1: Notification Dispatch (SQS-triggered) ---
   NotificationDispatchFunction:

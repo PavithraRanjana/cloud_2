@@ -145,9 +145,10 @@ async def _get_booking(booking_id: str, token: str) -> dict | None:
                     f"{config.booking_service_url}/api/v1/bookings/{booking_id}",
                     headers={"Authorization": f"Bearer {token}"},
                 )
-                if resp.status_code == 200:
-                    return resp.json()
-                return None
+                if resp.status_code == 404:
+                    return None
+                resp.raise_for_status()
+                return resp.json()
 
 
 async def _update_booking_status(booking_id: str, payload: dict) -> None:

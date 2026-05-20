@@ -688,114 +688,6 @@ Resources:
       Vpc: !Ref VPC
       Description: AeroLink private service discovery namespace
 
-  APIGatewayDiscoveryService:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: api-gateway
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  AuthServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: auth-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  FlightServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: flight-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  BookingServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: booking-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  PaymentServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: payment-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  BaggageServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: baggage-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  CheckinServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: checkin-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  PassengerServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: passenger-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
-  NotificationServiceDiscovery:
-    Type: AWS::ServiceDiscovery::Service
-    Properties:
-      Name: notification-service
-      NamespaceId: !Ref ServiceDiscoveryNamespace
-      DnsConfig:
-        DnsRecords:
-          - Type: A
-            TTL: 10
-      HealthCheckCustomConfig:
-        FailureThreshold: 1
-
   # ============================================================
   # IAM Roles
   # ============================================================
@@ -1283,6 +1175,8 @@ Resources:
       DefaultCapacityProviderStrategy:
         - CapacityProvider: FARGATE
           Weight: 1
+      ServiceConnectDefaults:
+        Namespace: aerolink.local
 
   # ============================================================
   # ECS Task Definitions (9 services)
@@ -1306,6 +1200,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8000
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: api-gateway
@@ -1364,6 +1259,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8001
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: auth-service
@@ -1412,6 +1308,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8002
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: flight-service
@@ -1460,6 +1357,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8003
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: booking-service
@@ -1512,6 +1410,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8004
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: payment-service
@@ -1566,6 +1465,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8005
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: baggage-service
@@ -1614,6 +1514,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8006
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: checkin-service
@@ -1668,6 +1569,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8007
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: passenger-service
@@ -1722,6 +1624,7 @@ Resources:
           PortMappings:
             - ContainerPort: 8008
               Protocol: tcp
+              Name: http
           Environment:
             - Name: SERVICE_NAME
               Value: notification-service
@@ -1788,8 +1691,15 @@ Resources:
         - TargetGroupArn: !Ref APIGatewayTargetGroup
           ContainerName: api-gateway
           ContainerPort: 8000
-      ServiceRegistries:
-        - RegistryArn: !GetAtt APIGatewayDiscoveryService.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: api-gateway
+            ClientAliases:
+              - Port: 8000
+                DnsName: api-gateway.aerolink.local
       HealthCheckGracePeriodSeconds: 120
 
   AuthService:
@@ -1811,8 +1721,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt AuthServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: auth-service
+            ClientAliases:
+              - Port: 8001
+                DnsName: auth-service.aerolink.local
 
   FlightService:
     Type: AWS::ECS::Service
@@ -1833,8 +1750,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt FlightServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: flight-service
+            ClientAliases:
+              - Port: 8002
+                DnsName: flight-service.aerolink.local
 
   BookingService:
     Type: AWS::ECS::Service
@@ -1855,8 +1779,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt BookingServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: booking-service
+            ClientAliases:
+              - Port: 8003
+                DnsName: booking-service.aerolink.local
 
   PaymentService:
     Type: AWS::ECS::Service
@@ -1877,8 +1808,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt PaymentServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: payment-service
+            ClientAliases:
+              - Port: 8004
+                DnsName: payment-service.aerolink.local
 
   BaggageService:
     Type: AWS::ECS::Service
@@ -1899,8 +1837,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt BaggageServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: baggage-service
+            ClientAliases:
+              - Port: 8005
+                DnsName: baggage-service.aerolink.local
 
   CheckinService:
     Type: AWS::ECS::Service
@@ -1921,8 +1866,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt CheckinServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: checkin-service
+            ClientAliases:
+              - Port: 8006
+                DnsName: checkin-service.aerolink.local
 
   PassengerService:
     Type: AWS::ECS::Service
@@ -1943,8 +1895,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt PassengerServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: passenger-service
+            ClientAliases:
+              - Port: 8007
+                DnsName: passenger-service.aerolink.local
 
   NotificationService:
     Type: AWS::ECS::Service
@@ -1965,8 +1924,15 @@ Resources:
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
-      ServiceRegistries:
-        - RegistryArn: !GetAtt NotificationServiceDiscovery.Arn
+      ServiceConnectConfiguration:
+        Enabled: true
+        Namespace: aerolink.local
+        Services:
+          - PortName: http
+            DiscoveryName: notification-service
+            ClientAliases:
+              - Port: 8008
+                DnsName: notification-service.aerolink.local
 
   # ============================================================
   # EventBridge

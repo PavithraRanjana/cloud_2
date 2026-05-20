@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IS_HOSTED_UI, localDevLogin } from '../lib/cognito';
+import { IS_HOSTED_UI, localDevLogin, redirectToSignUp } from '../lib/cognito';
 
 export function LoginPage() {
   const { loginWithCognito, setTokens } = useAuth();
@@ -67,6 +67,15 @@ export function LoginPage() {
             </svg>
             Continue with Google
           </button>
+          <p className="mt-4 text-center text-sm text-gray-500">
+            Don't have an account?{' '}
+            <button
+              onClick={() => { redirectToSignUp(); }}
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Sign up
+            </button>
+          </p>
         ) : (
           /* ── Local dev: username/password form → LocalStack ── */
           <form onSubmit={handleLocalSubmit} className="space-y-4">
@@ -101,6 +110,12 @@ export function LoginPage() {
             </button>
             <p className="text-center text-xs text-gray-400">
               Test users: test-passenger / test-admin / test-airline-staff (pw: Test1234!)
+            </p>
+            <p className="text-center text-sm text-gray-500">
+              Don't have an account?{' '}
+              <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+                Sign up
+              </Link>
             </p>
           </form>
         )}

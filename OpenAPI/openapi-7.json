@@ -1,1 +1,352 @@
-{"openapi":"3.1.0","info":{"title":"AeroLink Check-In Service","version":"1.0.0"},"paths":{"/health":{"get":{"summary":"Health","operationId":"health_health_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HealthResponse"}}}}}}},"/api/v1/checkin":{"post":{"summary":"Check In","operationId":"check_in_api_v1_checkin_post","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/CheckInRequest"}}},"required":true},"responses":{"201":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/CheckInResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}},"security":[{"HTTPBearer":[]}]}},"/api/v1/checkin/{booking_id}":{"get":{"summary":"Get Checkin","operationId":"get_checkin_api_v1_checkin__booking_id__get","parameters":[{"name":"booking_id","in":"path","required":true,"schema":{"type":"string","title":"Booking Id"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{"$ref":"#/components/schemas/CheckInResponse"}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/api/v1/checkin/{booking_id}/boarding-pass":{"get":{"summary":"Get Boarding Pass","operationId":"get_boarding_pass_api_v1_checkin__booking_id__boarding_pass_get","parameters":[{"name":"booking_id","in":"path","required":true,"schema":{"type":"string","title":"Booking Id"}}],"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}}},"components":{"schemas":{"CheckInRequest":{"properties":{"booking_id":{"type":"string","title":"Booking Id"},"flight_id":{"type":"string","title":"Flight Id"},"passenger_name":{"type":"string","title":"Passenger Name"},"seat_preference":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Seat Preference"}},"type":"object","required":["booking_id","flight_id","passenger_name"],"title":"CheckInRequest"},"CheckInResponse":{"properties":{"id":{"type":"string","title":"Id"},"booking_id":{"type":"string","title":"Booking Id"},"flight_id":{"type":"string","title":"Flight Id"},"passenger_name":{"type":"string","title":"Passenger Name"},"seat_number":{"type":"string","title":"Seat Number"},"boarding_group":{"type":"string","title":"Boarding Group"},"gate":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Gate"},"status":{"type":"string","title":"Status"},"boarding_pass_url":{"anyOf":[{"type":"string"},{"type":"null"}],"title":"Boarding Pass Url"},"has_baggage":{"type":"boolean","title":"Has Baggage"},"created_at":{"type":"string","format":"date-time","title":"Created At"}},"type":"object","required":["id","booking_id","flight_id","passenger_name","seat_number","boarding_group","gate","status","boarding_pass_url","has_baggage","created_at"],"title":"CheckInResponse"},"HTTPValidationError":{"properties":{"detail":{"items":{"$ref":"#/components/schemas/ValidationError"},"type":"array","title":"Detail"}},"type":"object","title":"HTTPValidationError"},"HealthResponse":{"properties":{"status":{"type":"string","title":"Status","default":"healthy"},"service":{"type":"string","title":"Service"},"uptime_seconds":{"type":"number","title":"Uptime Seconds"},"dependencies":{"additionalProperties":{"type":"string"},"type":"object","title":"Dependencies","default":{}}},"type":"object","required":["service","uptime_seconds"],"title":"HealthResponse"},"ValidationError":{"properties":{"loc":{"items":{"anyOf":[{"type":"string"},{"type":"integer"}]},"type":"array","title":"Location"},"msg":{"type":"string","title":"Message"},"type":{"type":"string","title":"Error Type"},"input":{"title":"Input"},"ctx":{"type":"object","title":"Context"}},"type":"object","required":["loc","msg","type"],"title":"ValidationError"}},"securitySchemes":{"HTTPBearer":{"type":"http","scheme":"bearer"}}}}
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "AeroLink Check-In Service",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/health": {
+            "get": {
+                "summary": "Health",
+                "operationId": "health_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HealthResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/checkin": {
+            "post": {
+                "summary": "Check In",
+                "operationId": "check_in_api_v1_checkin_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CheckInRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "201": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CheckInResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/api/v1/checkin/{booking_id}": {
+            "get": {
+                "summary": "Get Checkin",
+                "operationId": "get_checkin_api_v1_checkin__booking_id__get",
+                "parameters": [
+                    {
+                        "name": "booking_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Booking Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CheckInResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/checkin/{booking_id}/boarding-pass": {
+            "get": {
+                "summary": "Get Boarding Pass",
+                "operationId": "get_boarding_pass_api_v1_checkin__booking_id__boarding_pass_get",
+                "parameters": [
+                    {
+                        "name": "booking_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Booking Id"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CheckInRequest": {
+                "properties": {
+                    "booking_id": {
+                        "type": "string",
+                        "title": "Booking Id"
+                    },
+                    "flight_id": {
+                        "type": "string",
+                        "title": "Flight Id"
+                    },
+                    "passenger_name": {
+                        "type": "string",
+                        "title": "Passenger Name"
+                    },
+                    "seat_preference": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Seat Preference"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "booking_id",
+                    "flight_id",
+                    "passenger_name"
+                ],
+                "title": "CheckInRequest"
+            },
+            "CheckInResponse": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "booking_id": {
+                        "type": "string",
+                        "title": "Booking Id"
+                    },
+                    "flight_id": {
+                        "type": "string",
+                        "title": "Flight Id"
+                    },
+                    "passenger_name": {
+                        "type": "string",
+                        "title": "Passenger Name"
+                    },
+                    "seat_number": {
+                        "type": "string",
+                        "title": "Seat Number"
+                    },
+                    "boarding_group": {
+                        "type": "string",
+                        "title": "Boarding Group"
+                    },
+                    "gate": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gate"
+                    },
+                    "status": {
+                        "type": "string",
+                        "title": "Status"
+                    },
+                    "boarding_pass_url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Boarding Pass Url"
+                    },
+                    "has_baggage": {
+                        "type": "boolean",
+                        "title": "Has Baggage"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Created At"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "booking_id",
+                    "flight_id",
+                    "passenger_name",
+                    "seat_number",
+                    "boarding_group",
+                    "gate",
+                    "status",
+                    "boarding_pass_url",
+                    "has_baggage",
+                    "created_at"
+                ],
+                "title": "CheckInResponse"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "HealthResponse": {
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "title": "Status",
+                        "default": "healthy"
+                    },
+                    "service": {
+                        "type": "string",
+                        "title": "Service"
+                    },
+                    "uptime_seconds": {
+                        "type": "number",
+                        "title": "Uptime Seconds"
+                    },
+                    "dependencies": {
+                        "additionalProperties": {
+                            "type": "string"
+                        },
+                        "type": "object",
+                        "title": "Dependencies",
+                        "default": {}
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "service",
+                    "uptime_seconds"
+                ],
+                "title": "HealthResponse"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    },
+                    "input": {
+                        "title": "Input"
+                    },
+                    "ctx": {
+                        "type": "object",
+                        "title": "Context"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        },
+        "securitySchemes": {
+            "HTTPBearer": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        }
+    }
+}

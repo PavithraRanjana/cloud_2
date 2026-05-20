@@ -27,11 +27,15 @@ _jwks_fetched_at: float = 0.0
 _JWKS_TTL = 3600
 
 
-def _cognito_issuer() -> str:
-    if _AWS_ENDPOINT_URL:
-        # LocalStack: JWT issuer matches the LocalStack endpoint
-        return f"{_AWS_ENDPOINT_URL}/{_COGNITO_USER_POOL_ID}"
+def _cognito_issuer_prod() -> str:
     return f"https://cognito-idp.{_AWS_REGION}.amazonaws.com/{_COGNITO_USER_POOL_ID}"
+
+
+def _jwks_base_url() -> str:
+    """URL used to FETCH the JWKS — always the docker-internal (or real AWS) endpoint."""
+    if _AWS_ENDPOINT_URL:
+        return f"{_AWS_ENDPOINT_URL}/{_COGNITO_USER_POOL_ID}"
+    return _cognito_issuer_prod()
 
 
 def _fetch_jwks() -> dict:
@@ -39,7 +43,7 @@ def _fetch_jwks() -> dict:
     now = time.time()
     if _jwks_cache and (now - _jwks_fetched_at) < _JWKS_TTL:
         return _jwks_cache
-    url = f"{_cognito_issuer()}/.well-known/jwks.json"
+    url = f"{_jwks_base_url()}/.well-known/jwks.json"
     resp = httpx.get(url, timeout=5.0)
     resp.raise_for_status()
     keys = resp.json()["keys"]
@@ -52,12 +56,21 @@ def _verify_cognito_token(token: str) -> dict:
     """Validate a Cognito RS256 JWT against the User Pool JWKS. Returns raw claims."""
     try:
         header = jwt.get_unverified_header(token)
+        unverified_claims = jwt.get_unverified_claims(token)
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail=f"Invalid token header: {e}")
 
     kid = header.get("kid")
     alg = header.get("alg", "RS256")
+
+    # In LocalStack mode the iss hostname differs from our internal docker hostname.
+    # Extract the actual iss from the token and use it for issuer validation
+    # (we validate the signature separately via JWKS fetched from the internal endpoint).
+    if _AWS_ENDPOINT_URL:
+        expected_issuer = unverified_claims.get("iss", _jwks_base_url())
+    else:
+        expected_issuer = _cognito_issuer_prod()
 
     try:
         keys = _fetch_jwks()
@@ -84,7 +97,7 @@ def _verify_cognito_token(token: str) -> dict:
             keys[kid],
             algorithms=[alg],
             audience=_COGNITO_CLIENT_ID,
-            issuer=_cognito_issuer(),
+            issuer=expected_issuer,
         )
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,

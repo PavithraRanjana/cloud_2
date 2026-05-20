@@ -75,10 +75,16 @@ services:
       - CHECKIN_SERVICE_URL=http://checkin-service:8006
       - PASSENGER_SERVICE_URL=http://passenger-service:8007
       - NOTIFICATION_SERVICE_URL=http://notification-service:8008
+      - AWS_ENDPOINT_URL=http://localstack:4566
+    env_file:
+      - path: ./infrastructure/localstack/cognito.env
+        required: false
     depends_on:
       auth-service:
         condition: service_healthy
       flight-service:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
 
   # ──────────────────────────────────────────────

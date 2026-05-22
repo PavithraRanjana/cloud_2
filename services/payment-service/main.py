@@ -22,7 +22,7 @@ from shared.events import EventPublisher, _boto3_kwargs as _aws_kwargs
 from shared.encryption import tokenize_card, mask_card_number
 from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_set_nx, redis_get_json, redis_set_json
-from shared.resilience import create_circuit_breaker, async_retry
+from shared.resilience import create_circuit_breaker, async_retry, breaker_call_async
 from shared.logging import setup_logging
 from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
@@ -294,8 +294,8 @@ async def process_payment(data: PaymentCreate, request: Request,
         passenger_name    = current_user.get("full_name") or current_user.get("username", "")
         passenger_email   = current_user.get("email", "")
         try:
-            bdata = await booking_breaker.call_async(
-                _get_booking, data.booking_id, current_user.get("_token", "")
+            bdata = await breaker_call_async(
+                booking_breaker, _get_booking, data.booking_id, current_user.get("_token", "")
             )
             if bdata:
                 booking_reference = bdata.get("booking_reference", booking_reference)
@@ -306,8 +306,8 @@ async def process_payment(data: PaymentCreate, request: Request,
 
         # Update booking status via saga (circuit breaker + retry)
         try:
-            await booking_breaker.call_async(
-                _update_booking_status, data.booking_id,
+            await breaker_call_async(
+                booking_breaker, _update_booking_status, data.booking_id,
                 {"status": "paid", "payment_id": str(payment.id)}
             )
         except pybreaker.CircuitBreakerError:
@@ -318,7 +318,7 @@ async def process_payment(data: PaymentCreate, request: Request,
         # Award loyalty points (best-effort, breaker-protected)
         loyalty_points = max(1, int(data.amount * 10))
         try:
-            await passenger_breaker.call_async(_award_loyalty, current_user["sub"], loyalty_points)
+            await breaker_call_async(passenger_breaker, _award_loyalty, current_user["sub"], loyalty_points)
         except Exception:
             pass
 
@@ -403,8 +403,8 @@ async def refund_payment(payment_id: str, data: RefundRequest, request: Request,
 
     # Compensating transaction: cancel the booking (circuit breaker + retry)
     try:
-        await booking_breaker.call_async(
-            _update_booking_status, str(payment.booking_id), {"status": "cancelled"}
+        await breaker_call_async(
+            booking_breaker, _update_booking_status, str(payment.booking_id), {"status": "cancelled"}
         )
     except pybreaker.CircuitBreakerError:
         logger.warning("refund_booking_cancel_skipped_circuit_open", payment_id=payment_id)

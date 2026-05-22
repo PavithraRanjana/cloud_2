@@ -22,7 +22,7 @@ from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventPublisher, _boto3_kwargs as _aws_kwargs
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete
-from shared.resilience import create_circuit_breaker, async_retry
+from shared.resilience import create_circuit_breaker, async_retry, breaker_call_async
 from shared.logging import setup_logging
 from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
@@ -173,8 +173,8 @@ async def check_in(data: CheckInRequest,
 
     # Update booking status via saga (circuit breaker + retry)
     try:
-        await booking_breaker.call_async(
-            _update_booking_status, data.booking_id, {"status": "checked-in"}
+        await breaker_call_async(
+            booking_breaker, _update_booking_status, data.booking_id, {"status": "checked-in"}
         )
     except pybreaker.CircuitBreakerError:
         logger.warning("checkin_booking_status_skipped_circuit_open", booking_id=data.booking_id)

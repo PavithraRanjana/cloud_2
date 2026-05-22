@@ -17,7 +17,7 @@ from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from shared.auth import get_current_user
 from shared.events import EventPublisher
-from shared.resilience import create_circuit_breaker, async_retry
+from shared.resilience import create_circuit_breaker, async_retry, breaker_call_async
 from shared.cache import create_redis_client, redis_get_json, redis_set_json, redis_delete, redis_set_nx
 import structlog
 from shared.logging import setup_logging
@@ -165,7 +165,7 @@ async def create_booking(data: BookingCreate,
     try:
         # Step 1: Check flight availability (circuit breaker + retry)
         try:
-            flight = await flight_breaker.call_async(_flight_get, data.flight_id)
+            flight = await breaker_call_async(flight_breaker, _flight_get, data.flight_id)
         except pybreaker.CircuitBreakerError:
             raise HTTPException(status_code=503, detail="Flight service temporarily unavailable")
         except httpx.HTTPStatusError as e:
@@ -183,8 +183,8 @@ async def create_booking(data: BookingCreate,
 
         seats_reserved = False
         try:
-            await flight_breaker.call_async(
-                _flight_update_seats, data.flight_id, data.cabin_class, -data.num_passengers
+            await breaker_call_async(
+                flight_breaker, _flight_update_seats, data.flight_id, data.cabin_class, -data.num_passengers
             )
             seats_reserved = True
         except pybreaker.CircuitBreakerError:
@@ -227,8 +227,8 @@ async def create_booking(data: BookingCreate,
             # Saga compensation: release seats back if DB insert failed
             if seats_reserved:
                 try:
-                    await flight_breaker.call_async(
-                        _flight_update_seats, data.flight_id, data.cabin_class, data.num_passengers
+                    await breaker_call_async(
+                        flight_breaker, _flight_update_seats, data.flight_id, data.cabin_class, data.num_passengers
                     )
                 except Exception as comp_err:
                     logger.error("seat_compensation_failed", flight_id=data.flight_id,
@@ -364,8 +364,8 @@ async def cancel_booking(booking_id: str, current_user: dict = Depends(get_curre
 
     # Compensating transaction: release seats back (saga compensation)
     try:
-        await flight_breaker.call_async(
-            _flight_update_seats, str(booking.flight_id), booking.cabin_class, booking.num_passengers
+        await breaker_call_async(
+            flight_breaker, _flight_update_seats, str(booking.flight_id), booking.cabin_class, booking.num_passengers
         )
     except Exception as e:
         # Seat release failed — log for manual reconciliation. The booking is still

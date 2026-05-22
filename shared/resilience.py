@@ -1,3 +1,4 @@
+import types
 import pybreaker
 import structlog
 from tenacity import (
@@ -39,6 +40,32 @@ def create_circuit_breaker(name: str, fail_max: int = 5, reset_timeout: int = 30
         listeners=[LogListener()],
         name=name,
     )
+
+
+async def breaker_call_async(breaker: pybreaker.CircuitBreaker, coro_func, *args, **kwargs):
+    """asyncio-native circuit breaker call.
+
+    pybreaker's built-in call_async uses Tornado's gen.coroutine which is
+    unavailable in asyncio-only environments. This wrapper replicates the
+    same state machine but awaits the coroutine directly.
+    """
+    with breaker._lock:
+        state = breaker.state
+        # before_call raises CircuitBreakerError if the circuit is open
+        state.before_call(coro_func, *args, **kwargs)
+        for listener in breaker.listeners:
+            listener.before_call(breaker, coro_func, *args, **kwargs)
+
+    try:
+        result = await coro_func(*args, **kwargs)
+    except BaseException as exc:
+        with breaker._lock:
+            state._handle_error(exc)
+        raise
+    else:
+        with breaker._lock:
+            state._handle_success()
+        return result
 
 
 # Sync decorator — apply with @service_call_retry on regular functions

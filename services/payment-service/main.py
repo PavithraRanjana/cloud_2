@@ -180,10 +180,8 @@ async def _award_loyalty(user_id: str, points: int) -> None:
 
 
 def simulate_payment_processing() -> tuple[bool, str]:
-    """Simulate payment gateway - 95% success rate."""
-    if random.random() < 0.95:
-        return True, f"TXN-{uuid.uuid4().hex[:12].upper()}"
-    return False, "Payment declined by issuing bank"
+    """Simulate payment gateway - always succeeds in dev/test."""
+    return True, f"TXN-{uuid.uuid4().hex[:12].upper()}"
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -211,11 +209,12 @@ async def process_payment(data: PaymentCreate, request: Request,
         if existing_payment:
             return _to_response(existing_payment)
 
-    # Idempotency check via PostgreSQL (authoritative)
+    # Idempotency check via PostgreSQL (authoritative) — only short-circuit on completed payments.
+    # Failed payments are NOT cached so retries with a new ikey can re-process.
     existing = await db.execute(
         select(Payment).where(Payment.idempotency_key == data.idempotency_key))
     existing_payment = existing.scalar_one_or_none()
-    if existing_payment:
+    if existing_payment and existing_payment.status == PaymentStatus.COMPLETED:
         await record_audit(db, "payment-service", "payment.idempotent_hit", "payment",
                            resource_id=str(existing_payment.id),
                            actor_id=current_user["sub"], actor_role=current_user.get("role"),

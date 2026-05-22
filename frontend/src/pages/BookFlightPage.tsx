@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { flightClient, bookingClient, paymentClient } from "../api/client";
+import { flightClient, bookingClient, paymentClient, passengerClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
 import { PaymentForm, PaymentFormData } from "../components/PaymentForm";
 import { SeatMap } from "../components/SeatMap";
@@ -281,8 +281,8 @@ export function BookFlightPage() {
   const [selectedReturnSeat, setSelectedReturnSeat] = useState("");
   const [seatTab,            setSeatTab]            = useState<"outbound" | "return">("outbound");
 
-  // Payment idempotency key
-  const [ikey] = useState(() => crypto.randomUUID());
+  // Payment idempotency key — regenerated on each retry so the service re-processes
+  const [ikey, setIkey] = useState(() => crypto.randomUUID());
   const [result, setResult] = useState<BookResult | null>(null);
 
   // Validation errors
@@ -297,6 +297,16 @@ export function BookFlightPage() {
   const totalAmount   = outboundPrice + (isReturn ? returnPrice : 0);
 
   // ── Data fetching ────────────────────────────────────────────────────────
+  const { data: savedProfile } = useQuery({
+    queryKey: ["passenger-profile"],
+    queryFn: async () => {
+      const { data } = await (passengerClient as any).GET("/api/v1/passengers/profile", {});
+      return (data as Record<string, any>) ?? null;
+    },
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const { data: returnFlights = [], isFetching: fetchingReturn, isError: returnError } = useQuery<Flight[]>({
     queryKey: ["return-flights", flight.destination, flight.origin, returnDate],
     queryFn: async () => {
@@ -373,6 +383,29 @@ export function BookFlightPage() {
     if (isReturn && returnFlight && !selectedReturnSeat) e.return_seat = "Please select a seat for the return flight";
     setErrors(e);
     return Object.keys(e).length === 0;
+  }
+
+  function handleAutofill() {
+    if (!savedProfile) return;
+    const dobParts: string[] = savedProfile.date_of_birth
+      ? (savedProfile.date_of_birth as string).split("-")
+      : [];
+    setPassenger((prev) => ({
+      ...prev,
+      first_name:      savedProfile.first_name      ?? prev.first_name,
+      middle_name:     savedProfile.middle_name      ?? prev.middle_name,
+      last_name:       savedProfile.last_name        ?? prev.last_name,
+      nationality:     savedProfile.nationality      ?? prev.nationality,
+      passport_number: savedProfile.passport_number  ?? prev.passport_number,
+      ...(dobParts.length === 3 ? {
+        dob_year:  dobParts[0],
+        dob_month: String(parseInt(dobParts[1], 10)),
+        dob_day:   String(parseInt(dobParts[2], 10)),
+      } : {}),
+    }));
+    if (savedProfile.phone_number) {
+      setContact((prev) => ({ ...prev, phone_number: savedProfile.phone_number as string }));
+    }
   }
 
   // ── Navigation ───────────────────────────────────────────────────────────
@@ -552,7 +585,7 @@ export function BookFlightPage() {
               <div className="flex gap-3">
                 <button onClick={() => navigate("/flights")}
                   className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Cancel</button>
-                <button onClick={() => { setResult(null); setStep(STEP_PAYMENT); }}
+                <button onClick={() => { setResult(null); setIkey(crypto.randomUUID()); setStep(STEP_PAYMENT); }}
                   className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">Retry Payment</button>
               </div>
             </div>
@@ -761,6 +794,26 @@ export function BookFlightPage() {
                   <h2 className="text-lg font-bold text-gray-900">Passenger Details</h2>
                   <p className="mt-1 text-sm text-gray-400">Please enter details exactly as shown on your passport.</p>
                 </div>
+
+                {/* Autofill banner — only shown when a saved profile exists */}
+                {savedProfile?.first_name && (
+                  <div className="flex items-center justify-between rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-blue-800">Saved profile found</p>
+                      <p className="text-xs text-blue-500 mt-0.5">
+                        {savedProfile.first_name}{savedProfile.middle_name ? " " + savedProfile.middle_name : ""} {savedProfile.last_name}
+                        {savedProfile.nationality ? ` · ${savedProfile.nationality}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAutofill}
+                      className="shrink-0 rounded-lg bg-blue-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors"
+                    >
+                      Autofill
+                    </button>
+                  </div>
+                )}
 
                 {/* Title + Gender */}
                 <div className="grid grid-cols-2 gap-4">

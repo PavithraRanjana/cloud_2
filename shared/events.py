@@ -15,8 +15,10 @@ def _boto3_kwargs(endpoint_url: str, region: str,
     kwargs: dict = {"region_name": region}
     if endpoint_url:
         kwargs["endpoint_url"] = endpoint_url
-        kwargs["aws_access_key_id"] = aws_access_key_id
-        kwargs["aws_secret_access_key"] = aws_secret_access_key
+        # LocalStack requires non-empty credentials — "test" is the conventional placeholder.
+        # Empty strings cause LocalStack to resolve a different (non-existent) account ID.
+        kwargs["aws_access_key_id"] = aws_access_key_id or "test"
+        kwargs["aws_secret_access_key"] = aws_secret_access_key or "test"
     return kwargs
 
 

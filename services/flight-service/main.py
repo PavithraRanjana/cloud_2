@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, update, text
 from shared.health import check_db, check_redis
 import redis
 import structlog
@@ -86,6 +86,12 @@ async def get_db():
             raise
 
 
+_MIGRATION_QUERIES = [
+    "ALTER TABLE flights ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1",
+    "UPDATE flights SET version = 1 WHERE version IS NULL",
+]
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
@@ -93,6 +99,11 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         except Exception:
             pass  # Table may already exist from another service starting concurrently
+        for q in _MIGRATION_QUERIES:
+            try:
+                await conn.execute(text(q))
+            except Exception:
+                pass
     yield
     await engine.dispose()
 
@@ -331,16 +342,17 @@ async def update_seats(flight_id: str, data: SeatUpdate,
         raise HTTPException(status_code=409, detail="Not enough seats available")
 
     # OPTIMISTIC LOCKING: Only update if version hasn't changed (prevents double-booking)
-    current_version = flight.version
+    # Guard against NULL version (rows created before this column was added)
+    current_version = flight.version if flight.version is not None else 1
     stmt = (
         update(Flight)
-        .where(Flight.id == flight_id, Flight.version == current_version)
+        .where(Flight.id == flight_id,
+               (Flight.version == current_version) | Flight.version.is_(None))
         .values(**{seat_field: new_count, "version": current_version + 1})
     )
     update_result = await db.execute(stmt)
 
     if update_result.rowcount == 0:
-        # Another transaction modified this row - concurrent booking detected
         raise HTTPException(
             status_code=409,
             detail="Concurrent modification detected. Please retry the booking."

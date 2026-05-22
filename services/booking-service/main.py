@@ -181,45 +181,59 @@ async def create_booking(data: BookingCreate,
         price_key = f"price_{data.cabin_class}"
         total_price = flight.get(price_key, 0) * data.num_passengers
 
+        seats_reserved = False
         try:
             await flight_breaker.call_async(
                 _flight_update_seats, data.flight_id, data.cabin_class, -data.num_passengers
             )
+            seats_reserved = True
         except pybreaker.CircuitBreakerError:
             raise HTTPException(status_code=503, detail="Flight service temporarily unavailable")
 
-        # Step 3: Create booking record
+        # Step 3: Create booking record — if this fails, compensate by releasing seats
         import uuid as _uuid
-        group_id = _uuid.UUID(data.group_booking_id) if data.group_booking_id else None
-        booking = Booking(
-            booking_reference=generate_booking_ref(),
-            user_id=current_user["sub"],
-            flight_id=data.flight_id,
-            passenger_name=data.passenger_name,
-            passenger_email=data.passenger_email,
-            cabin_class=data.cabin_class,
-            num_passengers=data.num_passengers,
-            total_price=total_price,
-            status=BookingStatus.PENDING,
-            special_requests=data.special_requests,
-            trip_type=data.trip_type,
-            group_booking_id=group_id,
-            seat_numbers=data.seat_number,
-            title=data.title,
-            gender=data.gender,
-            first_name=data.first_name,
-            middle_name=data.middle_name,
-            last_name=data.last_name,
-            date_of_birth=data.date_of_birth,
-            nationality=data.nationality,
-            passport_number=data.passport_number,
-            passport_expiry=data.passport_expiry,
-            country_code=data.country_code,
-            phone_number=data.phone_number,
-        )
-        db.add(booking)
-        await db.flush()
-        await db.refresh(booking)
+        try:
+            group_id = _uuid.UUID(data.group_booking_id) if data.group_booking_id else None
+            booking = Booking(
+                booking_reference=generate_booking_ref(),
+                user_id=current_user["sub"],
+                flight_id=data.flight_id,
+                passenger_name=data.passenger_name,
+                passenger_email=data.passenger_email,
+                cabin_class=data.cabin_class,
+                num_passengers=data.num_passengers,
+                total_price=total_price,
+                status=BookingStatus.PENDING,
+                special_requests=data.special_requests,
+                trip_type=data.trip_type,
+                group_booking_id=group_id,
+                seat_numbers=data.seat_number,
+                title=data.title,
+                gender=data.gender,
+                first_name=data.first_name,
+                middle_name=data.middle_name,
+                last_name=data.last_name,
+                date_of_birth=data.date_of_birth,
+                nationality=data.nationality,
+                passport_number=data.passport_number,
+                passport_expiry=data.passport_expiry,
+                country_code=data.country_code,
+                phone_number=data.phone_number,
+            )
+            db.add(booking)
+            await db.flush()
+            await db.refresh(booking)
+        except Exception:
+            # Saga compensation: release seats back if DB insert failed
+            if seats_reserved:
+                try:
+                    await flight_breaker.call_async(
+                        _flight_update_seats, data.flight_id, data.cabin_class, data.num_passengers
+                    )
+                except Exception as comp_err:
+                    logger.error("seat_compensation_failed", flight_id=data.flight_id,
+                                 cabin_class=data.cabin_class, error=str(comp_err))
+            raise
 
         # Step 4: Emit BookingCreated event
         if event_publisher:

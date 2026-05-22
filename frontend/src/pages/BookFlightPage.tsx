@@ -464,7 +464,14 @@ export function BookFlightPage() {
           ...commonPassengerFields,
         } as any,
       });
-      if (e1 || !b1) throw new Error("Failed to create outbound booking");
+      if (e1 || !b1) {
+        const detail = (e1 as any)?.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map((d: any) => `${d.loc?.slice(-1)[0] ?? "field"}: ${d.msg}`).join("; ")
+          : typeof detail === "string" ? detail : JSON.stringify(e1 ?? "no response from booking service");
+        console.error("Booking creation failed:", e1);
+        throw new Error(msg);
+      }
       const outbound = b1 as { id: string; booking_reference: string; total_price: number };
 
       let returnRef: string | undefined;
@@ -484,7 +491,12 @@ export function BookFlightPage() {
         });
         if (e2 || !b2) {
           await bookingClient.POST(`/api/v1/bookings/${outbound.id}/cancel` as any, {});
-          throw new Error("Failed to create return booking");
+          const detail2 = (e2 as any)?.detail;
+          const msg2 = Array.isArray(detail2)
+            ? detail2.map((d: any) => `${d.loc?.slice(-1)[0] ?? "field"}: ${d.msg}`).join("; ")
+            : typeof detail2 === "string" ? detail2 : JSON.stringify(e2 ?? "no response");
+          console.error("Return booking creation failed:", e2);
+          throw new Error(msg2);
         }
         const ret = b2 as { id: string; booking_reference: string; total_price: number };
         returnRef = ret.booking_reference;
@@ -495,7 +507,12 @@ export function BookFlightPage() {
       const { data: pData, error: pErr } = await paymentClient.POST("/api/v1/payments", {
         body: { booking_id: outbound.id, amount: total, currency: "USD", idempotency_key: ikey, ...pd },
       });
-      if (pErr) throw new Error("Payment request failed");
+      if (pErr) {
+        const pd2 = (pErr as any)?.detail;
+        const pm = typeof pd2 === "string" ? pd2 : JSON.stringify(pErr ?? "payment service error");
+        console.error("Payment failed:", pErr);
+        throw new Error(pm);
+      }
       const payment = pData as { status: string; transaction_ref?: string; failure_reason?: string };
       return { outboundRef: outbound.booking_reference, returnRef, payment, totalAmount: total };
     },

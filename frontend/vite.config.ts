@@ -12,6 +12,17 @@ export default defineConfig({
         target: "http://localhost:8000",
         changeOrigin: true,
       },
+      "/localstack": {
+        target: "http://localhost:4566",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/localstack/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq) => {
+            proxyReq.removeHeader("origin");
+            proxyReq.removeHeader("referer");
+          });
+        },
+      },
     },
   },
   optimizeDeps: {

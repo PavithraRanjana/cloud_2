@@ -11,7 +11,8 @@
 const DOMAIN = import.meta.env.VITE_COGNITO_DOMAIN ?? '';
 const CLIENT_ID = import.meta.env.VITE_COGNITO_CLIENT_ID ?? '';
 const POOL_ID = import.meta.env.VITE_COGNITO_USER_POOL_ID ?? '';
-const LOCALSTACK_URL = import.meta.env.VITE_LOCALSTACK_URL ?? 'http://localhost:4566';
+// In local dev, proxy through Vite to avoid CORS (browser → localhost:4566 is cross-origin)
+const LOCALSTACK_URL = '/localstack';
 
 export const IS_HOSTED_UI = Boolean(DOMAIN && CLIENT_ID);
 

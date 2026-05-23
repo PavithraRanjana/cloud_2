@@ -199,7 +199,7 @@ async def _persist_notification(recipient_email: str, recipient_name: str,
         await session.commit()
 
 
-def process_event(event_body: dict):
+def process_event(event_body: dict, message_id: str = ""):
     """Process an SQS event: persist to DB then send email."""
     detail_type = event_body.get("detail-type", "")
     detail = event_body.get("detail", {})
@@ -226,8 +226,9 @@ def process_event(event_body: dict):
         logger.warning("no_recipient_email_in_event", detail_type=detail_type)
         return
 
-    # Deduplication: skip if we already processed this event+recipient within the window
-    dedup_key = f"notif:dedup:{detail_type}:{recipient_email}"
+    # Deduplication: keyed on SQS MessageId so only actual SQS redeliveries of
+    # the *same message* are suppressed — not separate legitimate events of the same type.
+    dedup_key = f"notif:dedup:{message_id}" if message_id else f"notif:dedup:{detail_type}:{recipient_email}:{detail.get('tag_number') or detail.get('booking_reference') or detail.get('transaction_ref') or ''}"
     if not redis_set_nx(redis_client, dedup_key, "1", DEDUP_TTL):
         logger.info("notification_deduplicated", event_type=detail_type, recipient=recipient_email)
         return
@@ -272,7 +273,7 @@ def poll_events():
             messages = consumer.poll(max_messages=10, wait_seconds=5)
             for msg in messages:
                 try:
-                    process_event(msg["body"])
+                    process_event(msg["body"], message_id=msg.get("message_id", ""))
                     consumer.ack(msg["receipt_handle"])
                 except Exception as e:
                     logger.error("event_processing_failed", error=str(e),

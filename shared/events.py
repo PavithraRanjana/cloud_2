@@ -70,7 +70,7 @@ class EventConsumer:
         results = []
         for msg in messages:
             body = json.loads(msg["Body"])
-            results.append({"body": body, "receipt_handle": msg["ReceiptHandle"]})
+            results.append({"body": body, "receipt_handle": msg["ReceiptHandle"], "message_id": msg["MessageId"]})
         return results
 
     def ack(self, receipt_handle: str):

@@ -67,6 +67,18 @@ export function Navbar() {
               )}
             </NavLink>
           ))}
+          {user?.role === "admin" && (
+            <NavLink
+              to="/staff/flights"
+              className={({ isActive }) =>
+                `rounded px-3 py-1.5 text-sm font-medium transition-colors border border-white/30 ${
+                  isActive ? "bg-white/20" : "hover:bg-white/10"
+                }`
+              }
+            >
+              Flights ✦
+            </NavLink>
+          )}
         </nav>
 
         <div className="flex items-center gap-3 text-sm">

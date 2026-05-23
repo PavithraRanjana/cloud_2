@@ -192,6 +192,10 @@ export function AdminDashboardPage() {
           </h2>
           <p className="text-sm text-gray-500 mt-1">AeroLink operations overview · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</p>
         </div>
+        <Link to="/staff/flights"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
+          Manage Flights
+        </Link>
       </div>
 
       {/* Key stats */}
@@ -228,7 +232,7 @@ export function AdminDashboardPage() {
       <div className="rounded-2xl bg-white border border-gray-100 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-50">
           <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400">Today's Schedule</h3>
-          <Link to="/flights" className="text-sm text-blue-600 hover:underline">View all →</Link>
+          <Link to="/staff/flights" className="text-sm text-blue-600 hover:underline">View all →</Link>
         </div>
         {upcomingToday.length === 0 ? (
           <p className="px-6 py-8 text-sm text-gray-400 text-center">No active flights scheduled for today.</p>
@@ -333,6 +337,7 @@ export function AdminDashboardPage() {
         <h3 className="mb-3 text-sm font-bold uppercase tracking-widest text-gray-400">Quick Actions</h3>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
+            { to: "/staff/flights", label: "Flight Management", icon: "✈", desc: "Create, edit & cancel flights" },
             { to: "/flights",       label: "Flight Schedule",   icon: "📅", desc: "View public flight board" },
             { to: "/notifications", label: "Notifications",     icon: "🔔", desc: "System notifications" },
             { to: "/profile",       label: "Account Settings",  icon: "⚙", desc: "Manage your admin account" },

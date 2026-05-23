@@ -16,7 +16,6 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { BookFlightPage } from "./pages/BookFlightPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { BaggageTrackingPage } from "./pages/BaggageTrackingPage";
-import { StaffFlightsPage } from "./pages/StaffFlightsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,7 +47,6 @@ export default function App() {
                 <Route path="profile"       element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
                 <Route path="notifications" element={<ErrorBoundary><NotificationsPage /></ErrorBoundary>} />
                 <Route path="track"         element={<ErrorBoundary><BaggageTrackingPage /></ErrorBoundary>} />
-                <Route path="staff/flights" element={<ErrorBoundary><StaffFlightsPage /></ErrorBoundary>} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

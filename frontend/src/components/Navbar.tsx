@@ -67,18 +67,6 @@ export function Navbar() {
               )}
             </NavLink>
           ))}
-          {["admin"].includes(user?.role ?? "") && (
-            <NavLink
-              to="/staff/flights"
-              className={({ isActive }) =>
-                `rounded px-3 py-1.5 text-sm font-medium transition-colors border border-white/30 ${
-                  isActive ? "bg-white/20" : "hover:bg-white/10"
-                }`
-              }
-            >
-              Staff ✦
-            </NavLink>
-          )}
         </nav>
 
         <div className="flex items-center gap-3 text-sm">

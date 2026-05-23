@@ -103,7 +103,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
         full_name=data.full_name,
         role=role,
         airport_code=data.airport_code if role == UserRole.AIRPORT_OPERATOR else None,
-        airline_code=data.airline_code if role == UserRole.AIRLINE_STAFF else None,
+        airline_code=None,
         api_key=api_key,
     )
     db.add(user)

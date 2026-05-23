@@ -173,35 +173,6 @@ def test_register_partner_api_generates_key(client):
     assert resp.json()["api_key"] == api_key_val
 
 
-def test_register_airline_staff_abac_attributes(client):
-    c, db_session, mod = client
-    result_mock = MagicMock()
-    result_mock.scalar_one_or_none.return_value = None
-    db_session.execute.return_value = result_mock
-
-    def fake_refresh(user):
-        user.id = uuid.uuid4()
-        user.created_at = MagicMock()
-        user.role = MagicMock(value="airline-staff")
-        user.is_active = True
-        user.airport_code = None
-        user.airline_code = "EI"
-        user.api_key = None
-
-    db_session.refresh = AsyncMock(side_effect=fake_refresh)
-
-    resp = c.post("/api/v1/auth/register", json={
-        "email": "staff@airline.com",
-        "username": "staff1",
-        "password": "StrongPass1",
-        "full_name": "Staff User",
-        "role": "airline-staff",
-        "airline_code": "EI",
-    })
-    assert resp.status_code == 201
-    assert resp.json()["airline_code"] == "EI"
-
-
 # ── Login ────────────────────────────────────────────────────────
 
 def test_login_success_returns_tokens(client, sample_user):
@@ -372,14 +343,14 @@ def test_get_me_unauthenticated(client):
 
 def test_validate_token_returns_claims(client, auth_headers):
     c, db_session, mod = client
-    headers = auth_headers(role="airline-staff", airline_code="EI")
+    headers = auth_headers(role="airport-operator", airport_code="DUB")
 
     resp = c.get("/api/v1/auth/validate", headers=headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["valid"] is True
-    assert body["role"] == "airline-staff"
-    assert body["airline_code"] == "EI"
+    assert body["role"] == "airport-operator"
+    assert body["airport_code"] == "DUB"
 
 
 def test_validate_token_unauthenticated(client):

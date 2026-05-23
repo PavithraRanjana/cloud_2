@@ -205,7 +205,7 @@ CLIENT_ID=$(awslocal cognito-idp create-user-pool-client \
 echo "Created Cognito App Client: $CLIENT_ID"
 
 # Create RBAC groups (same as production CloudFormation)
-for GROUP in passenger admin airline-staff airport-operator partner-api; do
+for GROUP in passenger admin airport-operator partner-api; do
   awslocal cognito-idp create-group \
     --group-name "$GROUP" \
     --user-pool-id "$POOL_ID"
@@ -213,7 +213,7 @@ for GROUP in passenger admin airline-staff airport-operator partner-api; do
 done
 
 # Create one test user per role (password: Test1234!)
-for ROLE in passenger admin airline-staff airport-operator; do
+for ROLE in passenger admin airport-operator; do
   USERNAME="test-$ROLE"
   awslocal cognito-idp admin-create-user \
     --user-pool-id "$POOL_ID" \
@@ -252,11 +252,10 @@ _create_named_user() {
 
 # Create real named users — existing accounts with DB history.
 TESTUSER_SUB=$(_create_named_user   "testuser"   "test@aerolink.com"       "admin")
-DELTASTAFF_SUB=$(_create_named_user "deltastaff" "staff@delta.com"          "airline-staff")
 PARTNERAPI_SUB=$(_create_named_user "partnerapi" "partner@airlines.com"     "partner-api")
 SUPERADMIN_SUB=$(_create_named_user "superadmin" "superadmin@aerolink.com"  "admin")
 SYSADMIN_SUB=$(_create_named_user   "sysadmin"   "sysadmin@aerolink.com"    "admin")
-echo "Created named users: testuser deltastaff partnerapi superadmin sysadmin"
+echo "Created named users: testuser partnerapi superadmin sysadmin"
 
 # Create ranjana — real user with booking history in the DB.
 # Her Cognito sub changes on every LocalStack restart (Cognito always assigns a new UUID).
@@ -290,7 +289,6 @@ COGNITO_USER_POOL_ID=${POOL_ID}
 COGNITO_CLIENT_ID=${CLIENT_ID}
 RANJANA_SUB=${RANJANA_SUB}
 TESTUSER_SUB=${TESTUSER_SUB}
-DELTASTAFF_SUB=${DELTASTAFF_SUB}
 PARTNERAPI_SUB=${PARTNERAPI_SUB}
 SUPERADMIN_SUB=${SUPERADMIN_SUB}
 SYSADMIN_SUB=${SYSADMIN_SUB}

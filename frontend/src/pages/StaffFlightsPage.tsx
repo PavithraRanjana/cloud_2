@@ -372,7 +372,7 @@ export function StaffFlightsPage() {
   const [acraftQuery,   setAcraftQuery]   = useState("");
   const [acraftOpen,    setAcraftOpen]    = useState(false);
 
-  const isStaff = ["admin", "airline-staff"].includes(user?.role ?? "");
+  const isStaff = ["admin"].includes(user?.role ?? "");
 
   const { data, isLoading, isError } = useQuery<{ items: Flight[] }>({
     queryKey: ["staff-flights"],
@@ -391,7 +391,7 @@ export function StaffFlightsPage() {
       <div className="flex flex-col items-center justify-center py-24 text-center">
         <div className="text-5xl mb-4">🔒</div>
         <h2 className="text-xl font-bold text-gray-800">Access Restricted</h2>
-        <p className="text-sm text-gray-400 mt-2">This page is only available to airline staff and administrators.</p>
+        <p className="text-sm text-gray-400 mt-2">This page is only available to administrators.</p>
       </div>
     );
   }

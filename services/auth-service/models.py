@@ -9,7 +9,6 @@ import enum
 
 class UserRole(str, enum.Enum):
     PASSENGER = "passenger"
-    AIRLINE_STAFF = "airline-staff"
     AIRPORT_OPERATOR = "airport-operator"
     ADMIN = "admin"
     PARTNER_API = "partner-api"
@@ -27,7 +26,7 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     # ABAC: attribute-based access control fields
     airport_code = Column(String(3), nullable=True)  # for airport-operator: restricts to their airport
-    airline_code = Column(String(3), nullable=True)  # for airline-staff: restricts to their airline
+    airline_code = Column(String(3), nullable=True)
     # API key for partner-api role
     api_key = Column(String(64), unique=True, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

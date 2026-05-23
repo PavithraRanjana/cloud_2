@@ -252,7 +252,7 @@ async def get_flight(flight_id: str, db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/v1/flights", response_model=FlightResponse, status_code=201)
 async def create_flight(data: FlightCreate,
-                        current_user: dict = Depends(RoleChecker(["admin", "airline-staff"])),
+                        current_user: dict = Depends(RoleChecker(["admin"])),
                         db: AsyncSession = Depends(get_db)):
     flight = Flight(
         flight_number=data.flight_number, airline=data.airline,
@@ -290,7 +290,7 @@ async def create_flight(data: FlightCreate,
 
 @app.put("/api/v1/flights/{flight_id}", response_model=FlightResponse)
 async def update_flight(flight_id: str, data: FlightUpdate,
-                        current_user: dict = Depends(RoleChecker(["admin", "airline-staff"])),
+                        current_user: dict = Depends(RoleChecker(["admin"])),
                         db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Flight).where(Flight.id == flight_id))
     flight = result.scalar_one_or_none()

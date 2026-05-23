@@ -31,7 +31,6 @@ const TITLE_OPTIONS = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof"];
 const ROLE_LABEL: Record<string, string> = {
   passenger:          "Passenger",
   admin:              "Administrator",
-  "airline-staff":    "Airline Staff",
   "airport-operator": "Airport Operator",
   "partner-api":      "Partner API",
 };

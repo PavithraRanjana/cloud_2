@@ -11,7 +11,7 @@ class UserRegister(BaseModel):
     role: str = "passenger"
     # ABAC attributes
     airport_code: Optional[str] = None  # for airport-operator role
-    airline_code: Optional[str] = None  # for airline-staff role
+    airline_code: Optional[str] = None
 
 
 class UserLogin(BaseModel):

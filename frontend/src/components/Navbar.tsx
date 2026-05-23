@@ -67,7 +67,7 @@ export function Navbar() {
               )}
             </NavLink>
           ))}
-          {["admin", "airline-staff"].includes(user?.role ?? "") && (
+          {["admin"].includes(user?.role ?? "") && (
             <NavLink
               to="/staff/flights"
               className={({ isActive }) =>

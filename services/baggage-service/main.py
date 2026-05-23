@@ -94,7 +94,7 @@ async def health(db: AsyncSession = Depends(get_db)):
 
 @app.get("/api/v1/baggage", response_model=list[BaggageResponse])
 async def list_all_baggage(
-    current_user: dict = Depends(RoleChecker(["admin", "airline-staff"])),
+    current_user: dict = Depends(RoleChecker(["admin"])),
     db: AsyncSession = Depends(get_db),
 ):
     """Admin endpoint: return all baggage items across all passengers."""
@@ -167,7 +167,7 @@ async def get_baggage_by_booking(booking_id: str,
 
 @app.put("/api/v1/baggage/{tag_number}/status", response_model=BaggageResponse)
 async def update_baggage_status(tag_number: str, data: BaggageStatusUpdate,
-                                current_user: dict = Depends(RoleChecker(["admin", "airline-staff", "airport-operator"])),
+                                current_user: dict = Depends(RoleChecker(["admin", "airport-operator"])),
                                 db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Baggage).where(Baggage.tag_number == tag_number))
     baggage = result.scalar_one_or_none()

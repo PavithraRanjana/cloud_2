@@ -143,36 +143,6 @@ def test_register_default_role_passenger(client):
     assert resp.json()["role"] == "passenger"
 
 
-def test_register_partner_api_generates_key(client):
-    c, db_session, mod = client
-    result_mock = MagicMock()
-    result_mock.scalar_one_or_none.return_value = None
-    db_session.execute.return_value = result_mock
-
-    api_key_val = "ak_test1234567890"
-
-    def fake_refresh(user):
-        user.id = uuid.uuid4()
-        user.created_at = MagicMock()
-        user.role = MagicMock(value="partner-api")
-        user.is_active = True
-        user.airport_code = None
-        user.airline_code = None
-        user.api_key = api_key_val
-
-    db_session.refresh = AsyncMock(side_effect=fake_refresh)
-
-    resp = c.post("/api/v1/auth/register", json={
-        "email": "partner@test.com",
-        "username": "partner1",
-        "password": "StrongPass1",
-        "full_name": "Partner",
-        "role": "partner-api",
-    })
-    assert resp.status_code == 201
-    assert resp.json()["api_key"] == api_key_val
-
-
 # ── Login ────────────────────────────────────────────────────────
 
 def test_login_success_returns_tokens(client, sample_user):
@@ -268,28 +238,6 @@ def test_refresh_access_token_rejected(client):
     assert resp.status_code == 401
 
 
-# ── Validate API Key ─────────────────────────────────────────────
-
-def test_validate_api_key_success(client, sample_user):
-    c, db_session, mod = client
-    user = sample_user(api_key="ak_valid123", role="partner-api")
-    result_mock = MagicMock()
-    result_mock.scalar_one_or_none.return_value = user
-    db_session.execute.return_value = result_mock
-
-    resp = c.post("/api/v1/auth/validate-api-key?api_key=ak_valid123")
-    assert resp.status_code == 200
-    assert resp.json()["valid"] is True
-
-
-def test_validate_api_key_invalid(client):
-    c, db_session, mod = client
-    result_mock = MagicMock()
-    result_mock.scalar_one_or_none.return_value = None
-    db_session.execute.return_value = result_mock
-
-    resp = c.post("/api/v1/auth/validate-api-key?api_key=ak_bogus")
-    assert resp.status_code == 401
 
 
 # ── Health ───────────────────────────────────────────────────────
@@ -343,14 +291,13 @@ def test_get_me_unauthenticated(client):
 
 def test_validate_token_returns_claims(client, auth_headers):
     c, db_session, mod = client
-    headers = auth_headers(role="airport-operator", airport_code="DUB")
+    headers = auth_headers(role="admin")
 
     resp = c.get("/api/v1/auth/validate", headers=headers)
     assert resp.status_code == 200
     body = resp.json()
     assert body["valid"] is True
-    assert body["role"] == "airport-operator"
-    assert body["airport_code"] == "DUB"
+    assert body["role"] == "admin"
 
 
 def test_validate_token_unauthenticated(client):
@@ -378,7 +325,3 @@ def test_login_missing_password_returns_422(client):
     assert resp.status_code == 422
 
 
-def test_validate_api_key_missing_param_returns_422(client):
-    c, db_session, mod = client
-    resp = c.post("/api/v1/auth/validate-api-key")  # api_key query param required
-    assert resp.status_code == 422

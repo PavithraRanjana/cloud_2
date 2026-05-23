@@ -119,7 +119,7 @@ export function LoginPage() {
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
             <p className="text-center text-xs text-gray-400">
-              Test users: test-passenger / test-admin / test-airport-operator (pw: Test1234!)
+              Test users: test-passenger / test-admin (pw: Test1234!)
             </p>
             <p className="text-center text-sm text-gray-500">
               Don't have an account?{' '}

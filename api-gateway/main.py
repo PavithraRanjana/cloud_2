@@ -20,11 +20,6 @@ logger = structlog.get_logger()
 
 START_TIME = time.time()
 
-# Partner API keys — comma-separated list in env var.
-# Empty = partner API key auth disabled (any x-api-key is rejected).
-_raw_keys = os.environ.get("PARTNER_API_KEYS", "")
-VALID_PARTNER_KEYS: set[str] = {k.strip() for k in _raw_keys.split(",") if k.strip()}
-
 # Route table: path prefix -> service URL
 ROUTES = {
     "/api/v1/auth": config.auth_service_url,
@@ -92,22 +87,18 @@ async def gateway_proxy(request: Request, path: str):
     trace_id = str(uuid.uuid4())
 
     client_ip = request.client.host if request.client else "unknown"
-    api_key = request.headers.get("x-api-key")
 
     # Authentication for protected paths
     if not is_public_path(full_path):
         auth_header = request.headers.get("authorization", "")
-        if api_key:
-            if api_key not in VALID_PARTNER_KEYS:
-                raise HTTPException(status_code=401, detail="Invalid API key")
-        elif auth_header.startswith("Bearer "):
+        if auth_header.startswith("Bearer "):
             try:
                 token = auth_header.split(" ", 1)[1]
                 decode_token(token, secret=config.jwt_secret)
             except Exception:
                 raise HTTPException(status_code=401, detail="Invalid or expired token")
         else:
-            raise HTTPException(status_code=401, detail="Missing authorization header or API key")
+            raise HTTPException(status_code=401, detail="Missing authorization header")
 
     # Route to service
     service_url = resolve_service(full_path)

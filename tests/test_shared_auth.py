@@ -90,7 +90,7 @@ def test_decode_token_malformed_raises():
 # ── RoleChecker ──────────────────────────────────────────────────
 
 def test_role_checker_allows_matching_role():
-    checker = RoleChecker(["admin", "airport-operator"])
+    checker = RoleChecker(["admin"])
     token = create_access_token({"sub": "u1", "role": "admin"})
     creds = MagicMock()
     creds.credentials = token
@@ -110,7 +110,7 @@ def test_role_checker_rejects_missing_role():
 
 def test_role_checker_allows_admin_always():
     """Admin should pass any role-checker that includes 'admin'."""
-    checker = RoleChecker(["admin", "airport-operator"])
+    checker = RoleChecker(["admin"])
     token = create_access_token({"sub": "u1", "role": "admin"})
     creds = MagicMock()
     creds.credentials = token

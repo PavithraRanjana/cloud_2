@@ -1121,30 +1121,6 @@ def test_gateway_service_down_returns_503(gw_integration):
         gw.gw_mod.ROUTES["/api/v1/notifications"] = original_url
 
 
-def test_gateway_partner_api_key_auth(gw_integration):
-    """Request with x-api-key bypasses JWT check for protected paths."""
-    gw = gw_integration
-
-    # Auth service validate-api-key returns valid
-    user_data = MagicMock()
-    user_data.id = uuid.uuid4()
-    user_data.username = "partner"
-    user_data.role = MagicMock(value="partner-api")
-    user_data.is_active = True
-    gw.auth_db.execute = AsyncMock(return_value=_mock_result(
-        scalar_one_or_none=user_data))
-
-    result_mock = MagicMock()
-    result_mock.scalars.return_value.all.return_value = []
-    gw.booking_db.execute = AsyncMock(return_value=result_mock)
-
-    resp = gw.client.get("/api/v1/bookings", headers={"x-api-key": "ak_test123"})
-    # With API key, gateway skips JWT and forwards; booking-service needs JWT though
-    # so this might return 401 from booking-service, but it should NOT be 401 from gateway
-    # The key check passes the gateway; downstream auth may fail
-    assert resp.status_code != 429  # Not rate limited
-
-
 def test_gateway_proxies_auth_register(gw_integration):
     """POST /api/v1/auth/register proxied to auth-service (public path)."""
     gw = gw_integration

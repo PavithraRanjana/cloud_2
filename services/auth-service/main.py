@@ -20,7 +20,7 @@ from shared.cache import create_redis_client, redis_incr_with_ttl, redis_delete
 from shared.logging import setup_logging
 from shared.tracing import TraceMiddleware
 from shared.schemas import HealthResponse
-from models import User, UserRole, generate_api_key
+from models import User, UserRole
 from schemas import (UserRegister, UserLogin, TokenResponse,
                      RefreshRequest, UserResponse)
 
@@ -70,10 +70,7 @@ def _to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=str(user.id), email=user.email, username=user.username,
         full_name=user.full_name, role=user.role.value,
-        is_active=user.is_active,
-        airport_code=user.airport_code, airline_code=user.airline_code,
-        api_key=user.api_key,
-        created_at=user.created_at,
+        is_active=user.is_active, created_at=user.created_at,
     )
 
 
@@ -93,18 +90,12 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
     role = UserRole(data.role) if data.role in [r.value for r in UserRole] else UserRole.PASSENGER
 
-    # Generate API key for partner-api accounts
-    api_key = generate_api_key() if role == UserRole.PARTNER_API else None
-
     user = User(
         email=data.email,
         username=data.username,
         hashed_password=hash_password(data.password),
         full_name=data.full_name,
         role=role,
-        airport_code=data.airport_code if role == UserRole.AIRPORT_OPERATOR else None,
-        airline_code=None,
-        api_key=api_key,
     )
     db.add(user)
     await db.flush()
@@ -133,22 +124,18 @@ async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(ge
     # Successful login: clear the failure counter
     redis_delete(redis_client, fail_key)
 
-    # Include ABAC attributes in JWT claims
     token_data = {
         "sub": str(user.id),
         "email": user.email,
         "username": user.username,
         "role": user.role.value,
-        "airport_code": user.airport_code,
-        "airline_code": user.airline_code,
     }
     access = create_access_token(token_data, secret=config.jwt_secret,
                                  expires_minutes=config.access_token_expire_minutes)
     refresh = create_refresh_token(token_data, secret=config.jwt_secret,
                                    expires_days=config.refresh_token_expire_days)
     return TokenResponse(access_token=access, refresh_token=refresh,
-                         expires_in=config.access_token_expire_minutes * 60,
-                         api_key=user.api_key)
+                         expires_in=config.access_token_expire_minutes * 60)
 
 
 @app.post("/api/v1/auth/refresh", response_model=TokenResponse)
@@ -159,8 +146,6 @@ async def refresh(data: RefreshRequest, db: AsyncSession = Depends(get_db)):
     token_data = {
         "sub": payload["sub"], "email": payload.get("email", ""),
         "username": payload["username"], "role": payload["role"],
-        "airport_code": payload.get("airport_code"),
-        "airline_code": payload.get("airline_code"),
     }
     access = create_access_token(token_data, secret=config.jwt_secret,
                                  expires_minutes=config.access_token_expire_minutes)
@@ -223,23 +208,6 @@ async def validate_token(current_user: dict = Depends(get_current_user)):
         "valid": True,
         "user_id": current_user["sub"],
         "role": current_user["role"],
-        "airport_code": current_user.get("airport_code"),
-        "airline_code": current_user.get("airline_code"),
-    }
-
-
-@app.post("/api/v1/auth/validate-api-key")
-async def validate_api_key(api_key: str, db: AsyncSession = Depends(get_db)):
-    """Validate an API key and return the associated user info."""
-    result = await db.execute(select(User).where(User.api_key == api_key))
-    user = result.scalar_one_or_none()
-    if not user or not user.is_active:
-        raise HTTPException(status_code=401, detail="Invalid API key")
-    return {
-        "valid": True,
-        "user_id": str(user.id),
-        "role": user.role.value,
-        "rate_limit": 1000,  # Partner APIs get higher rate limit
     }
 
 

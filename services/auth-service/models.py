@@ -9,9 +9,7 @@ import enum
 
 class UserRole(str, enum.Enum):
     PASSENGER = "passenger"
-    AIRPORT_OPERATOR = "airport-operator"
     ADMIN = "admin"
-    PARTNER_API = "partner-api"
 
 
 class User(Base):
@@ -24,10 +22,8 @@ class User(Base):
     full_name = Column(String(255), nullable=False)
     role = Column(SAEnum(UserRole), default=UserRole.PASSENGER, nullable=False)
     is_active = Column(Boolean, default=True)
-    # ABAC: attribute-based access control fields
-    airport_code = Column(String(3), nullable=True)  # for airport-operator: restricts to their airport
+    airport_code = Column(String(3), nullable=True)
     airline_code = Column(String(3), nullable=True)
-    # API key for partner-api role
     api_key = Column(String(64), unique=True, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
@@ -45,6 +41,3 @@ class RefreshToken(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
-def generate_api_key() -> str:
-    """Generate a secure API key for partner-api accounts."""
-    return f"ak_{secrets.token_hex(28)}"

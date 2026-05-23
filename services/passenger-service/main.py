@@ -67,9 +67,11 @@ def _to_response(p: PassengerProfile) -> ProfileResponse:
 
     return ProfileResponse(
         id=str(p.id), user_id=str(p.user_id),
+        title=p.title, gender=p.gender,
         first_name=p.first_name, middle_name=p.middle_name, last_name=p.last_name,
         date_of_birth=p.date_of_birth, nationality=p.nationality,
-        passport_number=passport, phone_number=p.phone_number,
+        passport_number=passport, passport_expiry=p.passport_expiry,
+        phone_number=p.phone_number,
         loyalty_tier=p.loyalty_tier, loyalty_points=p.loyalty_points,
         meal_preference=p.meal_preference, seat_preference=p.seat_preference,
         created_at=p.created_at,
@@ -88,6 +90,15 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text(
             "ALTER TABLE passenger_profiles ALTER COLUMN nationality TYPE VARCHAR(100)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE passenger_profiles ADD COLUMN IF NOT EXISTS title VARCHAR(20)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE passenger_profiles ADD COLUMN IF NOT EXISTS gender VARCHAR(20)"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE passenger_profiles ADD COLUMN IF NOT EXISTS passport_expiry DATE"
         ))
     yield
     await engine.dispose()
@@ -118,12 +129,15 @@ async def create_profile(data: ProfileCreate,
 
     profile = PassengerProfile(
         user_id=current_user["sub"],
+        title=data.title,
+        gender=data.gender,
         first_name=data.first_name,
         middle_name=data.middle_name,
         last_name=data.last_name,
         date_of_birth=data.date_of_birth,
         nationality=data.nationality,
         passport_number_encrypted=encrypted_passport,
+        passport_expiry=data.passport_expiry,
         phone_number=data.phone_number,
         meal_preference=data.meal_preference,
         seat_preference=data.seat_preference,

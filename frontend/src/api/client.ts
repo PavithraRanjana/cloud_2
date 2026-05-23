@@ -62,7 +62,8 @@ const authMiddleware: Middleware = {
     if (!newToken) {
       localStorage.removeItem('id_token');
       localStorage.removeItem('refresh_token');
-      window.location.href = '/login';
+      // Soft navigation via event — avoids a hard page reload that looks like a crash
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
       return response;
     }
 

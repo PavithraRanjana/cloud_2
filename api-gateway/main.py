@@ -43,6 +43,7 @@ PUBLIC_PATHS = {
     "/api/v1/auth/login",
     "/api/v1/auth/refresh",
     "/api/v1/flights",
+    "/api/v1/payments/stripe/webhook",  # Stripe authenticates via signature header
     "/health",
 }
 

@@ -10,6 +10,8 @@ class PassengerProfile(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), nullable=False, unique=True, index=True)
+    title = Column(String(20), nullable=True)
+    gender = Column(String(20), nullable=True)
     first_name = Column(String(100), nullable=False)
     middle_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=False)
@@ -17,6 +19,7 @@ class PassengerProfile(Base):
     nationality = Column(String(3), nullable=True)
     # PII: encrypted at rest via field-level encryption
     passport_number_encrypted = Column(String(500), nullable=True)
+    passport_expiry = Column(Date, nullable=True)
     phone_number = Column(String(20), nullable=True)
     loyalty_tier = Column(String(20), default="bronze")
     loyalty_points = Column(Integer, default=0)

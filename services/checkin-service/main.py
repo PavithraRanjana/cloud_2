@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -430,40 +430,181 @@ async def get_boarding_pass(
     return HTMLResponse(content=html)
 
 
+def _build_pdf(checkin: CheckIn, flight: dict | None, booking: dict | None, booking_id: str) -> bytes:
+    from fpdf import FPDF
+    from datetime import datetime, timezone, date as dt
+
+    def fmt_time(t: str) -> str:
+        if not t:
+            return "—"
+        parts = t[:5].split(":")
+        h = int(parts[0])
+        m = parts[1] if len(parts) > 1 else "00"
+        period = "PM" if h >= 12 else "AM"
+        return f"{h % 12 or 12}:{m} {period}"
+
+    def fmt_date(d: str) -> str:
+        if not d:
+            return "—"
+        try:
+            return dt.fromisoformat(d).strftime("%a, %b %-d %Y")
+        except Exception:
+            return d
+
+    f = flight or {}
+    b = booking or {}
+
+    passenger_name  = checkin.passenger_name.upper()
+    flight_number   = f.get("flight_number", "—")
+    airline         = f.get("airline", "AeroLink")
+    origin          = f.get("origin", "—")
+    destination     = f.get("destination", "—")
+    dep_time        = fmt_time(f.get("departure_time", ""))
+    arr_time        = fmt_time(f.get("arrival_time", ""))
+    dep_date        = fmt_date(f.get("departure_date", ""))
+    seat            = checkin.seat_number or "—"
+    group           = checkin.boarding_group or "—"
+    gate            = checkin.gate or f.get("gate") or "TBA"
+    cabin           = (b.get("cabin_class") or "economy").capitalize()
+    ref             = b.get("booking_reference", "—")
+
+    pdf = FPDF(orientation="L", unit="mm", format=(120, 240))
+    pdf.set_auto_page_break(auto=False)
+    pdf.add_page()
+
+    # Header band
+    pdf.set_fill_color(29, 78, 216)
+    pdf.rect(0, 0, 240, 26, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_xy(10, 5)
+    pdf.cell(120, 16, "AEROLINK")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(160, 5)
+    pdf.cell(70, 16, "BOARDING PASS", align="R")
+
+    # Route
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 28)
+    pdf.set_xy(10, 32)
+    pdf.cell(50, 14, origin)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(10, 46)
+    pdf.cell(50, 6, dep_time)
+
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.set_xy(70, 34)
+    pdf.cell(50, 6, f"{flight_number} · {airline}", align="C")
+    pdf.set_xy(65, 40)
+    pdf.line(65, 42, 175, 42)
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 28)
+    pdf.set_xy(175, 32)
+    pdf.cell(50, 14, destination, align="R")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(175, 46)
+    pdf.cell(50, 6, arr_time, align="R")
+
+    # Passenger
+    y = 58
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(120, 120, 120)
+    pdf.set_xy(10, y)
+    pdf.cell(100, 5, "PASSENGER")
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_xy(10, y + 5)
+    pdf.cell(150, 7, passenger_name)
+
+    # Details grid
+    y = 74
+    cols = [
+        ("SEAT",   seat,   10),
+        ("GROUP",  group,  58),
+        ("GATE",   gate,   106),
+        ("DATE",   dep_date, 154),
+    ]
+    for label, value, x in cols:
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(120, 120, 120)
+        pdf.set_xy(x, y)
+        pdf.cell(46, 5, label)
+        pdf.set_font("Helvetica", "B", 13)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(x, y + 5)
+        pdf.cell(46, 8, value)
+
+    # Second row
+    y = 94
+    cols2 = [
+        ("CABIN",   cabin,  10),
+        ("REF",     ref,    58),
+    ]
+    for label, value, x in cols2:
+        pdf.set_font("Helvetica", "", 7)
+        pdf.set_text_color(120, 120, 120)
+        pdf.set_xy(x, y)
+        pdf.cell(46, 5, label)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_xy(x, y + 5)
+        pdf.cell(46, 7, value)
+
+    # Dashed divider
+    pdf.set_draw_color(200, 200, 200)
+    pdf.dashed_line(10, 108, 230, 108, dash_length=2, space_length=2)
+
+    # Footer
+    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    pdf.set_font("Helvetica", "", 7)
+    pdf.set_text_color(150, 150, 150)
+    pdf.set_xy(10, 111)
+    pdf.cell(220, 5, f"Booking: {booking_id}  |  Generated: {generated}  |  AeroLink Airlines")
+
+    return bytes(pdf.output())
+
+
 @app.get("/api/v1/checkin/{booking_id}/boarding-pass/pdf")
 async def get_boarding_pass_pdf(
     booking_id: str,
+    request: Request,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return a presigned S3 URL for the PDF boarding pass generated by the Lambda."""
+    """Generate and stream a PDF boarding pass directly. Falls back gracefully from S3/Lambda."""
     result = await db.execute(select(CheckIn).where(CheckIn.booking_id == booking_id))
     checkin = result.scalar_one_or_none()
     if not checkin:
         raise HTTPException(status_code=404, detail="Check-in not found")
 
-    if not _s3:
-        raise HTTPException(status_code=503, detail="S3 unavailable")
+    auth_header = request.headers.get("Authorization", "")
+    flight, booking = None, None
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            fr = await client.get(f"{config.flight_service_url}/api/v1/flights/{checkin.flight_id}")
+            if fr.status_code == 200:
+                flight = fr.json()
+        except Exception:
+            pass
+        try:
+            br = await client.get(
+                f"{config.booking_service_url}/api/v1/bookings/{booking_id}",
+                headers={"Authorization": auth_header},
+            )
+            if br.status_code == 200:
+                booking = br.json()
+        except Exception:
+            pass
 
-    s3_key = f"boarding-passes/{booking_id}.pdf"
-    try:
-        _s3.head_object(Bucket=S3_BUCKET, Key=s3_key)
-    except Exception:
-        raise HTTPException(status_code=404, detail="PDF boarding pass not yet generated")
-
-    pdf_cache_key = f"pdf_url:{booking_id}"
-    cached_url = redis_get_json(redis_client, pdf_cache_key)
-    if cached_url is not None:
-        return cached_url
-
-    url = _s3.generate_presigned_url(
-        "get_object",
-        Params={"Bucket": S3_BUCKET, "Key": s3_key},
-        ExpiresIn=3600,
+    pdf_bytes = _build_pdf(checkin, flight, booking, booking_id)
+    filename = f"boarding-pass-{booking_id[:8]}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
-    result_payload = {"url": url, "expires_in": 3600}
-    redis_set_json(redis_client, pdf_cache_key, result_payload, PDF_URL_CACHE_TTL)
-    return result_payload
 
 
 if __name__ == "__main__":

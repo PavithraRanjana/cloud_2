@@ -190,8 +190,13 @@ services:
       - INTERNAL_API_KEY=aerolink-internal-dev-key
       - AWS_ENDPOINT_URL=http://localstack:4566
       - REDIS_URL=redis://redis:6379/3
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
     env_file:
       - path: ./infrastructure/localstack/cognito.env
+        required: false
+      - path: ./.env
         required: false
     depends_on:
       postgres:

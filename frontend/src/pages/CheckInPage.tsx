@@ -215,7 +215,7 @@ function BookingRow({
   async function openBoardingPass() {
     setDownloading(true);
     try {
-      const token = localStorage.getItem("access_token");
+      const token = localStorage.getItem("id_token");
       const res = await fetch(`/api/v1/checkin/${booking.id}/boarding-pass`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -235,15 +235,25 @@ function BookingRow({
 
   async function downloadPdfBoardingPass() {
     try {
-      const token = localStorage.getItem("access_token");
+      const token = localStorage.getItem("id_token");
       const res = await fetch(`/api/v1/checkin/${booking.id}/boarding-pass/pdf`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return; // PDF not ready yet — Lambda may still be processing
-      const { url } = await res.json();
-      window.open(url, "_blank");
+      if (!res.ok) {
+        alert("Could not generate PDF boarding pass. Please try again.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `boarding-pass-${booking.id.slice(0, 8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch {
-      // silently fail
+      alert("Could not download boarding pass. Please try again.");
     }
   }
 

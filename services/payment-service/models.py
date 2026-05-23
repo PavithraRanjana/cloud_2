@@ -14,13 +14,6 @@ class PaymentStatus(str, enum.Enum):
     REFUNDED = "refunded"
 
 
-class PaymentMethod(str, enum.Enum):
-    CREDIT_CARD = "credit-card"
-    DEBIT_CARD = "debit-card"
-    BANK_TRANSFER = "bank-transfer"
-    WALLET = "wallet"
-
-
 class Payment(Base):
     __tablename__ = "payments"
 
@@ -28,25 +21,19 @@ class Payment(Base):
     booking_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     amount = Column(Float, nullable=False)
-    currency = Column(String(3), default="EUR")
+    currency = Column(String(3), default="USD")
     status = Column(SAEnum(PaymentStatus), default=PaymentStatus.PENDING, nullable=False)
-    payment_method = Column(SAEnum(PaymentMethod), default=PaymentMethod.CREDIT_CARD)
     idempotency_key = Column(String(255), unique=True, nullable=False, index=True)
-    transaction_ref = Column(String(255), nullable=True)
+    transaction_ref = Column(String(255), nullable=True)  # Stripe charge id
     failure_reason = Column(String(500), nullable=True)
-    # PCI-DSS: tokenized card reference (never store raw card numbers, never store CVV)
-    card_token = Column(String(100), nullable=True)
-    card_last_four = Column(String(4), nullable=True)
-    card_holder_name = Column(String(255), nullable=True)
-    card_expiry = Column(String(7), nullable=True)          # MM/YY – month+year only
-    # Wallet
-    wallet_type = Column(String(20), nullable=True)
-    wallet_account = Column(String(255), nullable=True)     # masked email or phone
-    # Bank transfer
-    bank_account_holder = Column(String(255), nullable=True)
-    bank_account_masked = Column(String(20), nullable=True) # last-4 only
-    bank_routing_number = Column(String(20), nullable=True)
-    bank_name = Column(String(255), nullable=True)
+
+    # Stripe-managed payment data
+    provider = Column(String(20), default="stripe", nullable=False)
+    stripe_payment_intent_id = Column(String(255), nullable=True, index=True)
+    payment_method_type = Column(String(40), nullable=True)  # card | apple_pay | google_pay | link | …
+    wallet_brand = Column(String(40), nullable=True)         # visa | mastercard | … (PCI-safe brand only)
+    last_four = Column(String(4), nullable=True)             # PCI-safe; Stripe surfaces this directly
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc))

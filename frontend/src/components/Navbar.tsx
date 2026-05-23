@@ -30,8 +30,9 @@ export function Navbar() {
       const { data } = await notificationClient.GET("/api/v1/notifications", {});
       return (data as { is_read: boolean }[]) ?? [];
     },
-    refetchInterval: 30_000,
-    staleTime: 0,
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    retry: 0,
   });
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;

@@ -9,12 +9,15 @@ import { COUNTRY_CODES } from "../data/countryCodes";
 interface PassengerProfile {
   id: string;
   user_id: string;
+  title: string | null;
+  gender: string | null;
   first_name: string;
   middle_name: string | null;
   last_name: string;
   date_of_birth: string | null;
   nationality: string | null;
   passport_number: string | null;
+  passport_expiry: string | null;
   phone_number: string | null;
   loyalty_tier: string;
   loyalty_points: number;
@@ -22,6 +25,8 @@ interface PassengerProfile {
   seat_preference: string | null;
   created_at: string;
 }
+
+const TITLE_OPTIONS = ["Mr", "Mrs", "Ms", "Miss", "Dr", "Prof"];
 
 const ROLE_LABEL: Record<string, string> = {
   passenger:          "Passenger",
@@ -211,8 +216,10 @@ export function ProfilePage() {
   const hasProfile = !!profile?.id;
 
   const [form, setForm] = useState({
+    title: "", gender: "",
     first_name: "", middle_name: "", last_name: "", date_of_birth: "",
-    nationality: "", passport_number: "", phone_country_code: "+1", phone_number: "",
+    nationality: "", passport_number: "", passport_expiry: "",
+    phone_country_code: "+1", phone_number: "",
     meal_preference: "", seat_preference: "",
   });
 
@@ -222,12 +229,15 @@ export function ProfilePage() {
       const matched = COUNTRY_CODES.slice().sort((a, b) => b.dial.length - a.dial.length)
         .find((cc) => raw.startsWith(cc.dial));
       setForm({
+        title:               profile.title         ?? "",
+        gender:              profile.gender        ?? "",
         first_name:          profile.first_name    ?? "",
         middle_name:         profile.middle_name   ?? "",
         last_name:           profile.last_name     ?? "",
         date_of_birth:       profile.date_of_birth ?? "",
         nationality:         profile.nationality   ?? "",
         passport_number:     profile.passport_number ?? "",
+        passport_expiry:     profile.passport_expiry ?? "",
         phone_country_code:  matched ? matched.dial : "+1",
         phone_number:        matched ? raw.slice(matched.dial.length).trimStart() : raw,
         meal_preference:     profile.meal_preference ?? "",
@@ -240,12 +250,15 @@ export function ProfilePage() {
   const save = useMutation({
     mutationFn: async () => {
       const body = {
+        title:           form.title           || undefined,
+        gender:          form.gender          || undefined,
         first_name:      form.first_name,
         middle_name:     form.middle_name  || undefined,
         last_name:       form.last_name,
         date_of_birth:   form.date_of_birth   || undefined,
         nationality:     form.nationality     || undefined,
         passport_number: form.passport_number || undefined,
+        passport_expiry: form.passport_expiry || undefined,
         phone_number:    form.phone_number
           ? `${form.phone_country_code} ${form.phone_number}`
           : undefined,
@@ -368,12 +381,15 @@ export function ProfilePage() {
         {hasProfile && !editing && (
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
             {[
+              { label: "Title",           value: profile.title ?? "—" },
+              { label: "Gender",          value: profile.gender ?? "—" },
               { label: "First Name",      value: profile.first_name },
               { label: "Middle Name",     value: profile.middle_name ?? "—" },
               { label: "Last Name",       value: profile.last_name },
               { label: "Date of Birth",   value: profile.date_of_birth ?? "—" },
               { label: "Nationality",     value: profile.nationality ?? "—" },
               { label: "Passport",        value: profile.passport_number ?? "—" },
+              { label: "Passport Expiry", value: profile.passport_expiry ?? "—" },
               { label: "Phone",           value: profile.phone_number ?? "—" },
               { label: "Meal Preference", value: profile.meal_preference ?? "—" },
               { label: "Seat Preference", value: profile.seat_preference ?? "—" },
@@ -388,6 +404,30 @@ export function ProfilePage() {
 
         {editing && (
           <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Title</label>
+                <select value={form.title} onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
+                  className={SELECT}>
+                  <option value="">Select…</option>
+                  {TITLE_OPTIONS.map((t) => (
+                    <option key={t} value={t.toLowerCase()}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Gender</label>
+                <div className="flex gap-2">
+                  {["Male", "Female"].map((g) => (
+                    <button key={g} type="button"
+                      onClick={() => setForm(f => ({ ...f, gender: g.toLowerCase() }))}
+                      className={`flex-1 rounded-lg border h-9 text-sm font-medium transition-colors ${form.gender === g.toLowerCase() ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-500 hover:border-blue-300"}`}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">First Name*</label>
@@ -450,6 +490,14 @@ export function ProfilePage() {
                 <input value={form.passport_number} onChange={(e) => setForm(f => ({ ...f, passport_number: e.target.value.toUpperCase() }))}
                   className={INPUT} placeholder="e.g. A1234567" />
               </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Passport Expiry</label>
+                <input type="date" value={form.passport_expiry}
+                  onChange={(e) => setForm(f => ({ ...f, passport_expiry: e.target.value }))}
+                  className={INPUT} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-500">Phone Number</label>
                 <div className="flex gap-2">

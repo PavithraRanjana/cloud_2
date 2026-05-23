@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { flightClient, bookingClient, paymentClient, passengerClient } from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
-import { PaymentForm, PaymentFormData } from "../components/PaymentForm";
+import { PaymentForm } from "../components/PaymentForm";
 import { SeatMap } from "../components/SeatMap";
 import { AIRPORTS } from "../components/AirportCombobox";
 import { NATIONALITIES } from "../data/nationalities";
@@ -281,9 +281,19 @@ export function BookFlightPage() {
   const [selectedReturnSeat, setSelectedReturnSeat] = useState("");
   const [seatTab,            setSeatTab]            = useState<"outbound" | "return">("outbound");
 
-  // Payment idempotency key — regenerated on each retry so the service re-processes
+  // Payment idempotency key — regenerated only on full retry from result screen
   const [ikey, setIkey] = useState(() => crypto.randomUUID());
   const [result, setResult] = useState<BookResult | null>(null);
+
+  // Stripe PaymentIntent state — created once on summary → payment transition
+  const [intent, setIntent] = useState<{
+    clientSecret:    string;
+    publishableKey:  string;
+    paymentId:       string;
+    outboundRef:     string;
+    returnRef?:      string;
+    total:           number;
+  } | null>(null);
 
   // Validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -390,8 +400,13 @@ export function BookFlightPage() {
     const dobParts: string[] = savedProfile.date_of_birth
       ? (savedProfile.date_of_birth as string).split("-")
       : [];
+    const expParts: string[] = savedProfile.passport_expiry
+      ? (savedProfile.passport_expiry as string).split("-")
+      : [];
     setPassenger((prev) => ({
       ...prev,
+      title:           savedProfile.title           ?? prev.title,
+      gender:          savedProfile.gender          ?? prev.gender,
       first_name:      savedProfile.first_name      ?? prev.first_name,
       middle_name:     savedProfile.middle_name      ?? prev.middle_name,
       last_name:       savedProfile.last_name        ?? prev.last_name,
@@ -402,9 +417,27 @@ export function BookFlightPage() {
         dob_month: String(parseInt(dobParts[1], 10)),
         dob_day:   String(parseInt(dobParts[2], 10)),
       } : {}),
+      ...(expParts.length === 3 ? {
+        passport_exp_year:  expParts[0],
+        passport_exp_month: String(parseInt(expParts[1], 10)),
+        passport_exp_day:   String(parseInt(expParts[2], 10)),
+      } : {}),
     }));
     if (savedProfile.phone_number) {
-      setContact((prev) => ({ ...prev, phone_number: savedProfile.phone_number as string }));
+      const raw = (savedProfile.phone_number as string).trim();
+      const matched = COUNTRY_CODES.slice()
+        .sort((a, b) => b.dial.length - a.dial.length)
+        .find((cc) => raw.startsWith(cc.dial));
+      if (matched) {
+        setContact((prev) => ({
+          ...prev,
+          country_code: matched.dial,
+          phone_number: raw.slice(matched.dial.length).trimStart(),
+        }));
+        setCcQuery(matched.dial);
+      } else {
+        setContact((prev) => ({ ...prev, phone_number: raw }));
+      }
     }
   }
 
@@ -424,9 +457,13 @@ export function BookFlightPage() {
     else setStep((s) => s - 1);
   }
 
-  // ── Booking mutation ──────────────────────────────────────────────────────
-  const bookAndPay = useMutation({
-    mutationFn: async (pd: PaymentFormData) => {
+  // ── Create bookings + Stripe PaymentIntent ────────────────────────────────
+  // Runs on Summary → Payment transition. Reuses any existing intent if the user
+  // navigates back to summary and forward again (same idempotency key).
+  const createIntent = useMutation({
+    mutationFn: async () => {
+      if (intent) return intent;  // already created — reuse
+
       const dobStr = passenger.dob_year && passenger.dob_month && passenger.dob_day
         ? `${passenger.dob_year}-${passenger.dob_month.padStart(2, "0")}-${passenger.dob_day.padStart(2, "0")}`
         : undefined;
@@ -503,35 +540,41 @@ export function BookFlightPage() {
         total    += ret.total_price;
       }
 
-      // Payment
-      const { data: pData, error: pErr } = await paymentClient.POST("/api/v1/payments", {
-        body: { booking_id: outbound.id, amount: total, currency: "USD", idempotency_key: ikey, ...pd },
+      // Stripe PaymentIntent
+      const { data: pi, error: piErr } = await paymentClient.POST("/api/v1/payments/intent", {
+        body: {
+          booking_id:      outbound.id,
+          amount:          total,
+          currency:        "USD",
+          idempotency_key: ikey,
+        } as any,
       });
-      if (pErr) {
-        const pd2 = (pErr as any)?.detail;
-        const pm = typeof pd2 === "string" ? pd2 : JSON.stringify(pErr ?? "payment service error");
-        console.error("Payment failed:", pErr);
-        throw new Error(pm);
+      if (piErr || !pi) {
+        const d  = (piErr as any)?.detail;
+        const m  = typeof d === "string" ? d : JSON.stringify(piErr ?? "payment service error");
+        console.error("PaymentIntent creation failed:", piErr);
+        throw new Error(m);
       }
-      const payment = pData as { status: string; transaction_ref?: string; failure_reason?: string };
-      return { outboundRef: outbound.booking_reference, returnRef, payment, totalAmount: total };
-    },
-    onSuccess: ({ outboundRef, returnRef, payment, totalAmount: paid }) => {
-      qc.invalidateQueries({ queryKey: ["bookings"] });
-      setResult({
-        success:        payment.status === "completed",
-        outboundRef,
+      const intentData = pi as { client_secret: string; publishable_key: string; payment_id: string };
+      return {
+        clientSecret:   intentData.client_secret,
+        publishableKey: intentData.publishable_key,
+        paymentId:      intentData.payment_id,
+        outboundRef:    outbound.booking_reference,
         returnRef,
-        transactionRef: payment.transaction_ref ?? undefined,
-        failureReason:  payment.failure_reason  ?? undefined,
-        totalAmount:    paid,
-      });
+        total,
+      };
     },
-    onError: (err: unknown) => setResult({
-      success: false, outboundRef: "", totalAmount: 0,
-      failureReason: err instanceof Error ? err.message : "An unexpected error occurred.",
-    }),
+    onSuccess: (data) => {
+      setIntent(data);
+      setStep(STEP_PAYMENT);
+    },
   });
+
+  function handleConfirmAndPay() {
+    if (intent) { setStep(STEP_PAYMENT); return; }
+    createIntent.mutate();
+  }
 
   // ── Result screen ─────────────────────────────────────────────────────────
   if (result) {
@@ -1162,10 +1205,18 @@ export function BookFlightPage() {
                   <p className="text-2xl font-bold text-blue-700">${totalAmount.toFixed(2)} <span className="text-sm font-normal text-gray-400">USD</span></p>
                 </div>
 
+                {createIntent.isError && (
+                  <p className="text-xs text-red-500">
+                    {createIntent.error instanceof Error ? createIntent.error.message : "Could not create booking"}
+                  </p>
+                )}
+
                 <div className="flex gap-3 pt-2">
-                  <button onClick={handleBack} className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 transition-colors">Back</button>
-                  <button onClick={handleNext} className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 transition-colors">
-                    Confirm & Pay →
+                  <button onClick={handleBack} disabled={createIntent.isPending}
+                    className="flex-1 rounded-lg border border-gray-300 py-2.5 text-sm font-medium hover:bg-gray-50 disabled:opacity-50 transition-colors">Back</button>
+                  <button onClick={handleConfirmAndPay} disabled={createIntent.isPending}
+                    className="flex-1 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60 transition-colors">
+                    {createIntent.isPending ? "Preparing payment…" : "Confirm & Pay →"}
                   </button>
                 </div>
               </div>
@@ -1177,13 +1228,27 @@ export function BookFlightPage() {
             {step === STEP_PAYMENT && (
               <div>
                 <h2 className="mb-5 text-lg font-bold text-gray-900">Payment Details</h2>
-                <PaymentForm
-                  amount={totalAmount}
-                  currency="USD"
-                  isPending={bookAndPay.isPending}
-                  onBack={handleBack}
-                  onSubmit={(pd) => bookAndPay.mutate(pd)}
-                />
+                {intent ? (
+                  <PaymentForm
+                    clientSecret={intent.clientSecret}
+                    publishableKey={intent.publishableKey}
+                    amount={intent.total}
+                    currency="USD"
+                    onBack={handleBack}
+                    onSuccess={(intentId) => {
+                      qc.invalidateQueries({ queryKey: ["bookings"] });
+                      setResult({
+                        success:        true,
+                        outboundRef:    intent.outboundRef,
+                        returnRef:      intent.returnRef,
+                        transactionRef: intentId,
+                        totalAmount:    intent.total,
+                      });
+                    }}
+                  />
+                ) : (
+                  <p className="text-sm text-gray-400 animate-pulse">Preparing payment…</p>
+                )}
               </div>
             )}
 

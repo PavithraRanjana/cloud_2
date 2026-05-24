@@ -133,37 +133,40 @@ def test_track_baggage_not_found(baggage_app):
 
 # ── Get Baggage by Booking ───────────────────────────────────────
 
-def test_get_baggage_by_booking(baggage_app):
+def test_get_baggage_by_booking(baggage_app, auth_headers):
     c, db, mod = baggage_app
+    headers = auth_headers()
     bag = _make_baggage()
     result_mock = MagicMock()
     result_mock.scalars.return_value.all.return_value = [bag]
     db.execute.return_value = result_mock
 
-    resp = c.get(f"/api/v1/baggage/booking/{uuid.uuid4()}")
+    resp = c.get(f"/api/v1/baggage/booking/{uuid.uuid4()}", headers=headers)
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
 
 
 # ── Update Baggage Status ────────────────────────────────────────
 
-def test_update_baggage_status_success(baggage_app):
+def test_update_baggage_status_success(baggage_app, auth_headers):
     c, db, mod = baggage_app
+    headers = auth_headers(role="admin")
     bag = _make_baggage()
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = bag
     db.execute.return_value = result_mock
     db.refresh = AsyncMock(side_effect=lambda obj: None)
 
-    resp = c.put(f"/api/v1/baggage/{bag.tag_number}/status", json={
+    resp = c.put(f"/api/v1/baggage/{bag.tag_number}/status", headers=headers, json={
         "status": "loaded",
         "location": "Aircraft Hold",
     })
     assert resp.status_code == 200
 
 
-def test_update_baggage_status_publishes_event(baggage_app):
+def test_update_baggage_status_publishes_event(baggage_app, auth_headers):
     c, db, mod = baggage_app
+    headers = auth_headers(role="admin")
     mock_pub = MagicMock()
     mod.event_publisher = mock_pub
 
@@ -173,7 +176,7 @@ def test_update_baggage_status_publishes_event(baggage_app):
     db.execute.return_value = result_mock
     db.refresh = AsyncMock(side_effect=lambda obj: None)
 
-    c.put(f"/api/v1/baggage/{bag.tag_number}/status", json={
+    c.put(f"/api/v1/baggage/{bag.tag_number}/status", headers=headers, json={
         "status": "in-transit",
         "location": "In Flight",
     })
@@ -192,20 +195,22 @@ def test_health_endpoint(baggage_app):
 
 # ── 404 paths ────────────────────────────────────────────────────
 
-def test_update_baggage_status_not_found(baggage_app):
+def test_update_baggage_status_not_found(baggage_app, auth_headers):
     c, db, mod = baggage_app
+    headers = auth_headers(role="admin")
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = None
     db.execute.return_value = result_mock
 
-    resp = c.put("/api/v1/baggage/BAG-0000000000/status", json={"status": "loaded"})
+    resp = c.put("/api/v1/baggage/BAG-0000000000/status", headers=headers, json={"status": "loaded"})
     assert resp.status_code == 404
 
 
 # ── Exception silencing ──────────────────────────────────────────
 
-def test_update_baggage_publisher_exception_silenced(baggage_app):
+def test_update_baggage_publisher_exception_silenced(baggage_app, auth_headers):
     c, db, mod = baggage_app
+    headers = auth_headers(role="admin")
 
     mock_pub = MagicMock()
     mock_pub.publish.side_effect = Exception("eventbridge down")
@@ -217,7 +222,7 @@ def test_update_baggage_publisher_exception_silenced(baggage_app):
     db.execute.return_value = result_mock
     db.refresh = AsyncMock(side_effect=lambda obj: None)
 
-    resp = c.put(f"/api/v1/baggage/{bag.tag_number}/status", json={
+    resp = c.put(f"/api/v1/baggage/{bag.tag_number}/status", headers=headers, json={
         "status": "loaded",
         "location": "Baggage Hall",
     })
@@ -236,9 +241,10 @@ def test_register_baggage_missing_required_field_422(baggage_app, auth_headers):
     assert resp.status_code == 422
 
 
-def test_update_baggage_status_missing_status_422(baggage_app):
+def test_update_baggage_status_missing_status_422(baggage_app, auth_headers):
     c, db, mod = baggage_app
-    resp = c.put("/api/v1/baggage/BAG-1234567890/status", json={
+    headers = auth_headers(role="admin")
+    resp = c.put("/api/v1/baggage/BAG-1234567890/status", headers=headers, json={
         "location": "Gate B3"
         # status required but omitted
     })

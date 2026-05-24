@@ -5,6 +5,7 @@ import uuid
 import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -158,6 +159,8 @@ def test_create_booking_flight_not_found(booking_app, auth_headers):
 
     flight_resp = MagicMock()
     flight_resp.status_code = 404
+    flight_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "404 Not Found", request=MagicMock(), response=flight_resp)
 
     with patch("httpx.AsyncClient") as mock_httpx:
         mock_client = AsyncMock()

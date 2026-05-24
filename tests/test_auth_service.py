@@ -68,9 +68,6 @@ def test_register_success(client):
         user.created_at.isoformat = MagicMock(return_value="2025-01-01T00:00:00")
         user.role = MagicMock(value="passenger")
         user.is_active = True
-        user.airport_code = None
-        user.airline_code = None
-        user.api_key = None
 
     db_session.refresh = AsyncMock(side_effect=fake_refresh)
 
@@ -127,9 +124,6 @@ def test_register_default_role_passenger(client):
         user.created_at = MagicMock()
         user.role = MagicMock(value="passenger")
         user.is_active = True
-        user.airport_code = None
-        user.airline_code = None
-        user.api_key = None
 
     db_session.refresh = AsyncMock(side_effect=fake_refresh)
 
@@ -215,8 +209,6 @@ def test_refresh_valid_token(client):
         "sub": str(uuid.uuid4()),
         "username": "testuser",
         "role": "passenger",
-        "airport_code": None,
-        "airline_code": None,
     })
 
     resp = c.post("/api/v1/auth/refresh", json={"refresh_token": token})

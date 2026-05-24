@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from shared.health import check_db, check_redis
 import httpx
+import structlog
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
 from fastapi.security import APIKeyHeader
@@ -28,6 +29,7 @@ from schemas import (ProfileCreate, ProfileUpdate, ProfileResponse,
 
 config = BaseConfig(service_name="passenger-service")
 setup_logging(config.service_name)
+logger = structlog.get_logger()
 
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)

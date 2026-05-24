@@ -80,15 +80,12 @@ def auth_headers():
     """Factory that returns Authorization headers for a given role."""
     from shared.auth import create_access_token
 
-    def _make(role="passenger", sub=None, username="testuser",
-              airport_code=None, airline_code=None):
+    def _make(role="passenger", sub=None, username="testuser"):
         user_id = sub or str(uuid.uuid4())
         token = create_access_token({
             "sub": user_id,
             "username": username,
             "role": role,
-            "airport_code": airport_code,
-            "airline_code": airline_code,
         })
         return {"Authorization": f"Bearer {token}"}
 
@@ -116,9 +113,6 @@ def sample_user():
         user.role = role_mock
 
         user.is_active = overrides.get("is_active", True)
-        user.airport_code = overrides.get("airport_code", None)
-        user.airline_code = overrides.get("airline_code", None)
-        user.api_key = overrides.get("api_key", None)
         user.created_at = overrides.get("created_at", datetime.now(timezone.utc))
         return user
     return _make
@@ -183,6 +177,19 @@ def sample_booking():
         booking.payment_id = overrides.get("payment_id", None)
         booking.seat_numbers = overrides.get("seat_numbers", None)
         booking.special_requests = overrides.get("special_requests", None)
+        booking.trip_type = overrides.get("trip_type", "one_way")
+        booking.group_booking_id = overrides.get("group_booking_id", None)
+        booking.title = overrides.get("title", None)
+        booking.gender = overrides.get("gender", None)
+        booking.first_name = overrides.get("first_name", None)
+        booking.middle_name = overrides.get("middle_name", None)
+        booking.last_name = overrides.get("last_name", None)
+        booking.date_of_birth = overrides.get("date_of_birth", None)
+        booking.nationality = overrides.get("nationality", None)
+        booking.passport_number = overrides.get("passport_number", None)
+        booking.passport_expiry = overrides.get("passport_expiry", None)
+        booking.country_code = overrides.get("country_code", None)
+        booking.phone_number = overrides.get("phone_number", None)
         booking.created_at = overrides.get("created_at", datetime.now(timezone.utc))
         return booking
     return _make
@@ -190,7 +197,7 @@ def sample_booking():
 
 @pytest.fixture
 def sample_payment():
-    """Factory returning a mock Payment DB model object."""
+    """Factory returning a mock Payment DB model object (Stripe-based)."""
     def _make(**overrides):
         payment = MagicMock()
         payment.id = overrides.get("id", uuid.uuid4())
@@ -203,15 +210,14 @@ def sample_payment():
         status_mock.value = overrides.get("status", "completed")
         payment.status = status_mock
 
-        method_mock = MagicMock()
-        method_mock.value = overrides.get("payment_method", "credit-card")
-        payment.payment_method = method_mock
-
+        payment.provider = overrides.get("provider", "stripe")
         payment.idempotency_key = overrides.get("idempotency_key", str(uuid.uuid4()))
         payment.transaction_ref = overrides.get("transaction_ref", "TXN-ABC123")
         payment.failure_reason = overrides.get("failure_reason", None)
-        payment.card_token = overrides.get("card_token", "tok_abc123")
-        payment.card_last_four = overrides.get("card_last_four", "4242")
+        payment.stripe_payment_intent_id = overrides.get("stripe_payment_intent_id", None)
+        payment.payment_method_type = overrides.get("payment_method_type", None)
+        payment.wallet_brand = overrides.get("wallet_brand", None)
+        payment.last_four = overrides.get("last_four", None)
         payment.created_at = overrides.get("created_at", datetime.now(timezone.utc))
         return payment
     return _make

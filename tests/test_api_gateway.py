@@ -28,9 +28,6 @@ def gw_app():
     with patch("shared.logging.setup_logging"):
         spec.loader.exec_module(mod)
 
-    # Reset rate limit store between tests
-    mod.rate_limit_store.clear()
-
     with TestClient(mod.app, raise_server_exceptions=False) as c:
         yield c, mod
     for mod_name in ["models", "schemas"]:
@@ -77,34 +74,6 @@ def test_resolve_service_booking(gw_app):
 def test_resolve_service_unknown_returns_none(gw_app):
     c, mod = gw_app
     assert mod.resolve_service("/api/v1/unknown/path") is None
-
-
-# ── Rate limiting ────────────────────────────────────────────────
-
-def test_rate_limit_under_limit_allowed(gw_app):
-    c, mod = gw_app
-    mod.rate_limit_store.clear()
-    for _ in range(10):
-        assert mod.check_rate_limit("test-client", is_partner=False) is True
-
-
-def test_rate_limit_over_limit_blocked(gw_app):
-    c, mod = gw_app
-    mod.rate_limit_store.clear()
-    # Fill up to limit
-    for _ in range(mod.RATE_LIMIT_PUBLIC):
-        mod.check_rate_limit("flood-client")
-    # Next should be blocked
-    assert mod.check_rate_limit("flood-client") is False
-
-
-def test_rate_limit_partner_higher_limit(gw_app):
-    c, mod = gw_app
-    mod.rate_limit_store.clear()
-    # Partners get 1000 req/min
-    for _ in range(200):
-        result = mod.check_rate_limit("partner-client", is_partner=True)
-    assert result is True  # 200 < 1000, should still be allowed
 
 
 # ── Proxy behaviour ──────────────────────────────────────────────

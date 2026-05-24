@@ -55,7 +55,7 @@ def checkin_app(mock_db_session, auth_headers):
 
 def test_assign_seat_format(checkin_app):
     c, db, mod = checkin_app
-    seat, group = mod.assign_seat()
+    seat, group = mod.resolve_seat(None)
     assert seat[:-1].isdigit()  # row is numeric
     assert seat[-1] in "ABCDEF"
     assert group in ("A", "B", "C")
@@ -64,7 +64,7 @@ def test_assign_seat_format(checkin_app):
 def test_assign_seat_group_a_rows_1_10(checkin_app):
     c, db, mod = checkin_app
     with patch("random.randint", return_value=5), patch("random.choice", return_value="B"):
-        seat, group = mod.assign_seat()
+        seat, group = mod.resolve_seat(None)
     assert seat == "5B"
     assert group == "A"
 
@@ -72,7 +72,7 @@ def test_assign_seat_group_a_rows_1_10(checkin_app):
 def test_assign_seat_group_b_rows_11_20(checkin_app):
     c, db, mod = checkin_app
     with patch("random.randint", return_value=15), patch("random.choice", return_value="C"):
-        seat, group = mod.assign_seat()
+        seat, group = mod.resolve_seat(None)
     assert seat == "15C"
     assert group == "B"
 
@@ -80,7 +80,7 @@ def test_assign_seat_group_b_rows_11_20(checkin_app):
 def test_assign_seat_group_c_rows_21_35(checkin_app):
     c, db, mod = checkin_app
     with patch("random.randint", return_value=25), patch("random.choice", return_value="D"):
-        seat, group = mod.assign_seat()
+        seat, group = mod.resolve_seat(None)
     assert seat == "25D"
     assert group == "C"
 
@@ -193,8 +193,9 @@ def test_checkin_publishes_event_with_boarding_group_gate(checkin_app, auth_head
 
 # ── Get Check-in / Boarding Pass ─────────────────────────────────
 
-def test_get_checkin_success(checkin_app):
+def test_get_checkin_success(checkin_app, auth_headers):
     c, db, mod = checkin_app
+    headers = auth_headers()
     checkin = MagicMock()
     checkin.id = uuid.uuid4()
     checkin.booking_id = uuid.uuid4()
@@ -212,13 +213,14 @@ def test_get_checkin_success(checkin_app):
     result_mock.scalar_one_or_none.return_value = checkin
     db.execute.return_value = result_mock
 
-    resp = c.get(f"/api/v1/checkin/{checkin.booking_id}")
+    resp = c.get(f"/api/v1/checkin/{checkin.booking_id}", headers=headers)
     assert resp.status_code == 200
     assert resp.json()["seat_number"] == "12B"
 
 
-def test_get_boarding_pass(checkin_app):
+def test_get_boarding_pass(checkin_app, auth_headers):
     c, db, mod = checkin_app
+    headers = auth_headers()
     checkin = MagicMock()
     checkin.passenger_name = "Jane Doe"
     checkin.seat_number = "1A"
@@ -230,12 +232,17 @@ def test_get_boarding_pass(checkin_app):
     result_mock.scalar_one_or_none.return_value = checkin
     db.execute.return_value = result_mock
 
-    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass")
+    with patch("httpx.AsyncClient") as mock_httpx:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("no service"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass", headers=headers)
     assert resp.status_code == 200
-    bp = resp.json()["boarding_pass"]
-    assert bp["passenger"] == "Jane Doe"
-    assert bp["seat"] == "1A"
-    assert bp["status"] == "READY TO BOARD"
+    assert "JANE DOE" in resp.text
+    assert "1A" in resp.text
 
 
 # ── Health ───────────────────────────────────────────────────────
@@ -249,23 +256,25 @@ def test_health_endpoint(checkin_app):
 
 # ── 404 paths ────────────────────────────────────────────────────
 
-def test_get_checkin_not_found(checkin_app):
+def test_get_checkin_not_found(checkin_app, auth_headers):
     c, db, mod = checkin_app
+    headers = auth_headers()
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = None
     db.execute.return_value = result_mock
 
-    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}")
+    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}", headers=headers)
     assert resp.status_code == 404
 
 
-def test_get_boarding_pass_not_found(checkin_app):
+def test_get_boarding_pass_not_found(checkin_app, auth_headers):
     c, db, mod = checkin_app
+    headers = auth_headers()
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = None
     db.execute.return_value = result_mock
 
-    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass")
+    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass", headers=headers)
     assert resp.status_code == 404
 
 

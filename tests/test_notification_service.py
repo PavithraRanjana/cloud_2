@@ -68,13 +68,15 @@ def test_process_event_booking_created(notification_app):
     })
 
 
-def test_process_event_payment_processed(notification_app):
+def test_process_event_payment_completed(notification_app):
     c, db, mod = notification_app
     mod.process_event({
-        "detail-type": "PaymentProcessed",
+        "detail-type": "PaymentCompleted",
         "detail": {
-            "booking_id": "booking-1",
+            "booking_reference": "ALTEST01",
+            "passenger_name": "John Doe",
             "amount": "199.99",
+            "currency": "EUR",
             "transaction_ref": "TXN-123",
         },
     })

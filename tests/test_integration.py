@@ -22,9 +22,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.database import Base
 from shared.auth import create_access_token
 
-# Pre-mock boto3 to prevent import hang
+# Pre-mock boto3 and stripe to prevent import hang / missing package errors
 _mock_boto3 = MagicMock()
 sys.modules.setdefault("boto3", _mock_boto3)
+_mock_stripe = MagicMock()
+sys.modules.setdefault("stripe", _mock_stripe)
 
 PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
 
@@ -248,7 +250,8 @@ def integration_services():
         "services/booking-service", "integ_booking", booking_db)
 
     payment_mod = _load_service(
-        "services/payment-service", "integ_payment", payment_db)
+        "services/payment-service", "integ_payment", payment_db,
+        env_overrides={"STRIPE_SECRET_KEY": "sk_test_fake", "STRIPE_WEBHOOK_SECRET": "whsec_test"})
 
     checkin_mod = _load_service(
         "services/checkin-service", "integ_checkin", checkin_db)
@@ -288,7 +291,7 @@ def integration_services():
     user_id = str(uuid.uuid4())
     token = create_access_token({
         "sub": user_id, "username": "integ_user",
-        "role": "passenger", "airport_code": None, "airline_code": None,
+        "role": "passenger",
     })
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -364,7 +367,9 @@ def gw_integration():
         "services/flight-service", "gw_flight", flight_db,
         extra_patches={"redis.Redis.from_url": mock_redis})
     booking_mod = _load_service("services/booking-service", "gw_booking", booking_db)
-    payment_mod = _load_service("services/payment-service", "gw_payment", payment_db)
+    payment_mod = _load_service(
+        "services/payment-service", "gw_payment", payment_db,
+        env_overrides={"STRIPE_SECRET_KEY": "sk_test_fake", "STRIPE_WEBHOOK_SECRET": "whsec_test"})
     baggage_mod = _load_service("services/baggage-service", "gw_baggage", baggage_db)
     checkin_mod = _load_service("services/checkin-service", "gw_checkin", checkin_db)
     passenger_mod = _load_service("services/passenger-service", "gw_passenger", passenger_db)
@@ -386,7 +391,6 @@ def gw_integration():
     gw_mod = importlib.util.module_from_spec(spec)
     with patch("shared.logging.setup_logging"):
         spec.loader.exec_module(gw_mod)
-    gw_mod.rate_limit_store.clear()
 
     # Transport: all 8 service ports
     service_apps = {
@@ -515,30 +519,72 @@ def test_full_booking_saga_happy_path(integration_services):
     # Verify BookingCreated event was captured
     assert len(s.events.find("BookingCreated")) == 1
 
-    # ── Step 3: Process payment via payment-service ──
+    # ── Step 3: Create payment intent + complete via Stripe webhook ──
     s.events.clear()
 
-    # Payment DB: idempotency check returns None, then refresh
-    s.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=None))
+    pi_id = "pi_test_saga_123"
+    _mock_stripe.PaymentIntent.create.return_value = MagicMock(
+        id=pi_id,
+        client_secret=f"{pi_id}_secret_xxx",
+    )
 
-    def fake_payment_refresh(obj):
+    # Payment DB: idempotency check returns None, then refresh for intent creation
+    payment_intent_obj = MagicMock()
+    payment_intent_obj.id = payment_id
+    payment_intent_obj.booking_id = booking_id
+    payment_intent_obj.user_id = s.user_id
+    payment_intent_obj.amount = 199.99
+    payment_intent_obj.currency = "EUR"
+    payment_intent_obj.status = s.payment_mod.PaymentStatus.PROCESSING
+    payment_intent_obj.stripe_payment_intent_id = pi_id
+    payment_intent_obj.idempotency_key = "idem-001"
+    payment_intent_obj.transaction_ref = None
+    payment_intent_obj.failure_reason = None
+    payment_intent_obj.provider = "stripe"
+    payment_intent_obj.payment_method_type = None
+    payment_intent_obj.wallet_brand = None
+    payment_intent_obj.last_four = None
+    payment_intent_obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
+
+    def fake_payment_intent_refresh(obj):
         obj.id = payment_id
         obj.booking_id = booking_id
         obj.user_id = s.user_id
         obj.amount = 199.99
         obj.currency = "EUR"
-        obj.status = MagicMock(value="completed")
-        obj.payment_method = MagicMock(value="credit-card")
+        obj.status = MagicMock(value="processing")
         obj.idempotency_key = "idem-001"
-        obj.transaction_ref = "TXN-INTEG-001"
+        obj.transaction_ref = None
         obj.failure_reason = None
-        obj.card_token = "tok_abc"
-        obj.card_last_four = "4242"
+        obj.provider = "stripe"
+        obj.stripe_payment_intent_id = pi_id
+        obj.payment_method_type = None
+        obj.wallet_brand = None
+        obj.last_four = None
         obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
 
-    s.payment_db.refresh = AsyncMock(side_effect=fake_payment_refresh)
+    s.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=None))
+    s.payment_db.refresh = AsyncMock(side_effect=fake_payment_intent_refresh)
 
-    # Booking DB for status update from payment: find booking, then refresh
+    with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
+        resp = c.post("/api/v1/payments/intent", headers=s.auth_headers, json={
+            "booking_id": booking_id,
+            "amount": 199.99,
+            "currency": "EUR",
+            "idempotency_key": "idem-001",
+        })
+    assert resp.status_code == 201, f"Payment intent failed: {resp.text}"
+    assert "client_secret" in resp.json()
+
+    # Simulate Stripe webhook: payment_intent.succeeded
+    _mock_stripe.Webhook.construct_event.return_value = {
+        "type": "payment_intent.succeeded",
+        "id": "evt_test_saga_123",
+        "data": {"object": {"id": pi_id, "charges": {"data": []}}},
+    }
+    s.payment_db.execute = AsyncMock(return_value=_mock_result(
+        scalar_one_or_none=payment_intent_obj))
+
     booking_for_status = MagicMock()
     booking_for_status.id = booking_id
     booking_for_status.booking_reference = "ALTEST01"
@@ -559,22 +605,14 @@ def test_full_booking_saga_happy_path(integration_services):
         scalar_one_or_none=booking_for_status))
     s.booking_db.refresh = AsyncMock(side_effect=lambda obj: None)
 
-    with patch.object(s.payment_mod, "simulate_payment_processing",
-                      return_value=(True, "TXN-INTEG-001")):
-        with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
-            resp = c.post("/api/v1/payments", headers=s.auth_headers, json={
-                "booking_id": booking_id,
-                "amount": 199.99,
-                "currency": "EUR",
-                "payment_method": "credit-card",
-                "card_number": "4111111111111111",
-                "idempotency_key": "idem-001",
-            })
-    assert resp.status_code == 201, f"Payment failed: {resp.text}"
-    assert resp.json()["status"] == "completed"
+    with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
+        resp = c.post("/api/v1/payments/stripe/webhook",
+                      content=b'{"type":"payment_intent.succeeded"}',
+                      headers={"stripe-signature": "t=123,v1=abc"})
+    assert resp.status_code == 200, f"Webhook failed: {resp.text}"
 
-    # Verify PaymentProcessed event
-    assert len(s.events.find("PaymentProcessed")) == 1
+    # Verify PaymentCompleted event
+    assert len(s.events.find("PaymentCompleted")) == 1
 
     # ── Step 4: Check-in via checkin-service ──
     s.events.clear()
@@ -644,12 +682,11 @@ def test_full_booking_saga_happy_path(integration_services):
         scalar_one_or_none=checkin_obj))
 
     with TestClient(s.checkin_mod.app, raise_server_exceptions=False) as c:
-        resp = c.get(f"/api/v1/checkin/{booking_id}/boarding-pass")
+        resp = c.get(f"/api/v1/checkin/{booking_id}/boarding-pass",
+                     headers=s.auth_headers)
     assert resp.status_code == 200
-    bp = resp.json()["boarding_pass"]
-    assert bp["passenger"] == "John Doe"
-    assert bp["seat"] == "12A"
-    assert bp["status"] == "READY TO BOARD"
+    assert "JOHN DOE" in resp.text
+    assert "12A" in resp.text
 
 
 def test_booking_saga_events_reach_notification(integration_services):
@@ -663,10 +700,15 @@ def test_booking_saga_events_reach_notification(integration_services):
         "flight_id": "F1",
         "total_price": "199.99",
     })
-    s.events.publish("payment-service", "PaymentProcessed", {
+    s.events.publish("payment-service", "PaymentCompleted", {
         "booking_id": "B1",
-        "amount": "199.99",
+        "booking_reference": "ALTEST01",
+        "amount": 199.99,
+        "currency": "EUR",
         "transaction_ref": "TXN-001",
+        "passenger_email": "",
+        "passenger_name": "John Doe",
+        "loyalty_points_awarded": 0,
     })
     s.events.publish("checkin-service", "CheckInCompleted", {
         "passenger_name": "John Doe",
@@ -679,7 +721,7 @@ def test_booking_saga_events_reach_notification(integration_services):
     assert len(delivered) == 3
     types = [e["detail-type"] for e in delivered]
     assert "BookingCreated" in types
-    assert "PaymentProcessed" in types
+    assert "PaymentCompleted" in types
     assert "CheckInCompleted" in types
 
 
@@ -695,6 +737,7 @@ def test_cancel_booking_releases_seats(integration_services):
     flight_id = str(uuid.uuid4())
     booking_id = str(uuid.uuid4())
 
+    from datetime import datetime, timezone as _tz
     # Booking to cancel
     booking = MagicMock()
     booking.id = booking_id
@@ -710,7 +753,20 @@ def test_cancel_booking_releases_seats(integration_services):
     booking.payment_id = None
     booking.seat_numbers = None
     booking.special_requests = None
-    booking.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
+    booking.trip_type = "one_way"
+    booking.group_booking_id = None
+    booking.title = None
+    booking.gender = None
+    booking.first_name = None
+    booking.middle_name = None
+    booking.last_name = None
+    booking.date_of_birth = None
+    booking.nationality = None
+    booking.passport_number = None
+    booking.passport_expiry = None
+    booking.country_code = None
+    booking.phone_number = None
+    booking.created_at = datetime.now(_tz.utc)
 
     s.booking_db.execute = AsyncMock(return_value=_mock_result(
         scalar_one_or_none=booking))
@@ -762,91 +818,86 @@ def test_cancel_already_cancelled_booking_fails(integration_services):
 # ══════════════════════════════════════════════════════════════════
 
 def test_payment_failure_publishes_failed_event(integration_services):
-    """Failed payment publishes PaymentFailed, not PaymentProcessed."""
+    """Failed payment webhook publishes PaymentFailed, not PaymentCompleted."""
     s = integration_services
     from fastapi.testclient import TestClient
 
-    payment_id = str(uuid.uuid4())
+    pi_id = "pi_test_fail_123"
 
-    # No existing idempotent payment
-    s.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=None))
+    payment_obj = MagicMock()
+    payment_obj.id = str(uuid.uuid4())
+    payment_obj.booking_id = str(uuid.uuid4())
+    payment_obj.user_id = s.user_id
+    payment_obj.amount = 100.0
+    payment_obj.currency = "EUR"
+    payment_obj.stripe_payment_intent_id = pi_id
+    payment_obj.idempotency_key = "fail-001"
+    payment_obj.transaction_ref = None
+    payment_obj.failure_reason = None
+    payment_obj.provider = "stripe"
 
-    def fake_refresh(obj):
-        obj.id = payment_id
-        obj.booking_id = str(uuid.uuid4())
-        obj.user_id = s.user_id
-        obj.amount = 100.0
-        obj.currency = "EUR"
-        obj.status = MagicMock(value="failed")
-        obj.payment_method = MagicMock(value="credit-card")
-        obj.idempotency_key = "fail-001"
-        obj.transaction_ref = None
-        obj.failure_reason = "Payment declined by issuing bank"
-        obj.card_token = "tok_x"
-        obj.card_last_four = "1234"
-        obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
+    s.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=payment_obj))
 
-    s.payment_db.refresh = AsyncMock(side_effect=fake_refresh)
+    _mock_stripe.Webhook.construct_event.return_value = {
+        "type": "payment_intent.payment_failed",
+        "id": "evt_test_fail_123",
+        "data": {
+            "object": {
+                "id": pi_id,
+                "last_payment_error": {"message": "Payment declined by issuing bank"},
+            }
+        },
+    }
 
-    with patch.object(s.payment_mod, "simulate_payment_processing",
-                      return_value=(False, "Payment declined by issuing bank")):
-        with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
-            resp = c.post("/api/v1/payments", headers=s.auth_headers, json={
-                "booking_id": str(uuid.uuid4()),
-                "amount": 100.0,
-                "currency": "EUR",
-                "payment_method": "credit-card",
-                "card_number": "4111111111111111",
-                "idempotency_key": "fail-001",
-            })
-    assert resp.status_code == 201
-    assert resp.json()["status"] == "failed"
+    s.events.clear()
+
+    with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
+        resp = c.post("/api/v1/payments/stripe/webhook",
+                      content=b'{"type":"payment_intent.payment_failed"}',
+                      headers={"stripe-signature": "t=123,v1=abc"})
+    assert resp.status_code == 200
     assert len(s.events.find("PaymentFailed")) == 1
-    assert len(s.events.find("PaymentProcessed")) == 0
+    assert len(s.events.find("PaymentCompleted")) == 0
 
 
 def test_payment_failure_booking_stays_pending(integration_services):
-    """After failed payment, no booking status update is made."""
+    """After failed payment webhook, no booking status update is made."""
     s = integration_services
     from fastapi.testclient import TestClient
 
-    booking_id = str(uuid.uuid4())
+    pi_id = "pi_test_fail2_123"
 
-    s.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=None))
+    payment_obj = MagicMock()
+    payment_obj.id = str(uuid.uuid4())
+    payment_obj.booking_id = str(uuid.uuid4())
+    payment_obj.user_id = s.user_id
+    payment_obj.stripe_payment_intent_id = pi_id
+    payment_obj.idempotency_key = "fail-002"
+    payment_obj.failure_reason = None
+    payment_obj.provider = "stripe"
 
-    def fake_refresh(obj):
-        obj.id = str(uuid.uuid4())
-        obj.booking_id = booking_id
-        obj.user_id = s.user_id
-        obj.amount = 50.0
-        obj.currency = "EUR"
-        obj.status = MagicMock(value="failed")
-        obj.payment_method = MagicMock(value="credit-card")
-        obj.idempotency_key = "fail-002"
-        obj.transaction_ref = None
-        obj.failure_reason = "Declined"
-        obj.card_token = "tok_y"
-        obj.card_last_four = "5678"
-        obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
+    s.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=payment_obj))
 
-    s.payment_db.refresh = AsyncMock(side_effect=fake_refresh)
+    _mock_stripe.Webhook.construct_event.return_value = {
+        "type": "payment_intent.payment_failed",
+        "id": "evt_test_fail2",
+        "data": {
+            "object": {
+                "id": pi_id,
+                "last_payment_error": {"message": "Declined"},
+            }
+        },
+    }
 
     # Booking DB should NOT receive any calls (no status update on failure)
     s.booking_db.execute = AsyncMock()
 
-    with patch.object(s.payment_mod, "simulate_payment_processing",
-                      return_value=(False, "Declined")):
-        with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
-            c.post("/api/v1/payments", headers=s.auth_headers, json={
-                "booking_id": booking_id,
-                "amount": 50.0,
-                "currency": "EUR",
-                "payment_method": "credit-card",
-                "card_number": "4111111111111111",
-                "idempotency_key": "fail-002",
-            })
+    with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
+        c.post("/api/v1/payments/stripe/webhook",
+               content=b'{"type":"payment_intent.payment_failed"}',
+               headers={"stripe-signature": "t=123,v1=abc"})
 
-    # Booking DB should not have been called for status update
+    # Booking DB should not have been called
     s.booking_db.execute.assert_not_called()
 
 
@@ -855,7 +906,7 @@ def test_payment_failure_booking_stays_pending(integration_services):
 # ══════════════════════════════════════════════════════════════════
 
 def test_payment_idempotency_returns_existing(integration_services):
-    """Same idempotency key returns existing payment, no new event."""
+    """COMPLETED payment with same idempotency key returns 409."""
     s = integration_services
     from fastapi.testclient import TestClient
 
@@ -865,13 +916,15 @@ def test_payment_idempotency_returns_existing(integration_services):
     existing_payment.user_id = s.user_id
     existing_payment.amount = 199.99
     existing_payment.currency = "EUR"
-    existing_payment.status = MagicMock(value="completed")
-    existing_payment.payment_method = MagicMock(value="credit-card")
+    existing_payment.status = s.payment_mod.PaymentStatus.COMPLETED
+    existing_payment.stripe_payment_intent_id = "pi_existing_123"
     existing_payment.idempotency_key = "idem-dup"
     existing_payment.transaction_ref = "TXN-EXISTING"
     existing_payment.failure_reason = None
-    existing_payment.card_token = "tok_exist"
-    existing_payment.card_last_four = "4242"
+    existing_payment.provider = "stripe"
+    existing_payment.payment_method_type = None
+    existing_payment.wallet_brand = None
+    existing_payment.last_four = None
     existing_payment.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
 
     s.payment_db.execute = AsyncMock(return_value=_mock_result(
@@ -880,16 +933,13 @@ def test_payment_idempotency_returns_existing(integration_services):
     s.events.clear()
 
     with TestClient(s.payment_mod.app, raise_server_exceptions=False) as c:
-        resp = c.post("/api/v1/payments", headers=s.auth_headers, json={
+        resp = c.post("/api/v1/payments/intent", headers=s.auth_headers, json={
             "booking_id": str(uuid.uuid4()),
             "amount": 199.99,
             "currency": "EUR",
-            "payment_method": "credit-card",
-            "card_number": "4111111111111111",
             "idempotency_key": "idem-dup",
         })
-    assert resp.status_code == 201
-    assert resp.json()["transaction_ref"] == "TXN-EXISTING"
+    assert resp.status_code == 409
     # No new events
     assert len(s.events.events) == 0
 
@@ -931,14 +981,19 @@ def test_booking_event_reaches_notification(integration_services):
 
 def test_payment_event_reaches_notification(integration_services):
     s = integration_services
-    s.events.publish("payment-service", "PaymentProcessed", {
+    s.events.publish("payment-service", "PaymentCompleted", {
         "booking_id": "B1",
-        "amount": "100",
+        "booking_reference": "ALTEST01",
+        "amount": 100.0,
+        "currency": "EUR",
         "transaction_ref": "TXN-1",
+        "passenger_email": "",
+        "passenger_name": "",
+        "loyalty_points_awarded": 0,
     })
     delivered = s.events.drain_to(s.notification_mod)
     assert len(delivered) == 1
-    assert delivered[0]["detail-type"] == "PaymentProcessed"
+    assert delivered[0]["detail-type"] == "PaymentCompleted"
 
 
 def test_checkin_event_reaches_notification(integration_services):
@@ -1135,9 +1190,6 @@ def test_gateway_proxies_auth_register(gw_integration):
         obj.full_name = "New User"
         obj.role = MagicMock(value="passenger")
         obj.is_active = True
-        obj.airport_code = None
-        obj.airline_code = None
-        obj.api_key = None
         obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
 
     gw.auth_db.refresh = AsyncMock(side_effect=fake_refresh)
@@ -1153,7 +1205,7 @@ def test_gateway_proxies_auth_register(gw_integration):
 
 
 def test_gateway_proxies_payments(gw_integration):
-    """POST /api/v1/payments with JWT proxied to payment-service."""
+    """POST /api/v1/payments/intent with JWT proxied to payment-service."""
     gw = gw_integration
     token = create_access_token({
         "sub": str(uuid.uuid4()), "username": "payer",
@@ -1161,60 +1213,42 @@ def test_gateway_proxies_payments(gw_integration):
     })
     headers = {"Authorization": f"Bearer {token}"}
 
-    payment_id = str(uuid.uuid4())
+    pi_id = "pi_gw_test_123"
+    _mock_stripe.PaymentIntent.create.return_value = MagicMock(
+        id=pi_id,
+        client_secret=f"{pi_id}_secret_xxx",
+    )
 
     # Payment DB: no idempotent match
     gw.payment_db.execute = AsyncMock(return_value=_mock_result(scalar_one_or_none=None))
 
     def fake_refresh(obj):
-        obj.id = payment_id
+        obj.id = str(uuid.uuid4())
         obj.booking_id = str(uuid.uuid4())
         obj.user_id = str(uuid.uuid4())
         obj.amount = 99.99
         obj.currency = "EUR"
-        obj.status = MagicMock(value="completed")
-        obj.payment_method = MagicMock(value="credit-card")
+        obj.status = MagicMock(value="processing")
         obj.idempotency_key = "gw-idem-001"
-        obj.transaction_ref = "TXN-GW-001"
+        obj.transaction_ref = None
         obj.failure_reason = None
-        obj.card_token = "tok_gw"
-        obj.card_last_four = "4242"
+        obj.provider = "stripe"
+        obj.stripe_payment_intent_id = pi_id
+        obj.payment_method_type = None
+        obj.wallet_brand = None
+        obj.last_four = None
         obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
 
     gw.payment_db.refresh = AsyncMock(side_effect=fake_refresh)
 
-    # Booking DB for status update from payment
-    booking_for_status = MagicMock()
-    booking_for_status.id = str(uuid.uuid4())
-    booking_for_status.booking_reference = "ALGW01"
-    booking_for_status.user_id = str(uuid.uuid4())
-    booking_for_status.flight_id = str(uuid.uuid4())
-    booking_for_status.passenger_name = "GW User"
-    booking_for_status.passenger_email = "gw@test.com"
-    booking_for_status.cabin_class = "economy"
-    booking_for_status.num_passengers = 1
-    booking_for_status.total_price = 99.99
-    booking_for_status.status = MagicMock(value="pending")
-    booking_for_status.payment_id = None
-    booking_for_status.seat_numbers = None
-    booking_for_status.special_requests = None
-    booking_for_status.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
-    gw.booking_db.execute = AsyncMock(return_value=_mock_result(
-        scalar_one_or_none=booking_for_status))
-    gw.booking_db.refresh = AsyncMock(side_effect=lambda obj: None)
-
-    with patch.object(gw.payment_mod, "simulate_payment_processing",
-                      return_value=(True, "TXN-GW-001")):
-        resp = gw.client.post("/api/v1/payments", headers=headers, json={
-            "booking_id": str(uuid.uuid4()),
-            "amount": 99.99,
-            "currency": "EUR",
-            "payment_method": "credit-card",
-            "card_number": "4111111111111111",
-            "idempotency_key": "gw-idem-001",
-        })
+    resp = gw.client.post("/api/v1/payments/intent", headers=headers, json={
+        "booking_id": str(uuid.uuid4()),
+        "amount": 99.99,
+        "currency": "EUR",
+        "idempotency_key": "gw-idem-001",
+    })
     assert resp.status_code == 201
-    assert resp.json()["status"] == "completed"
+    assert "client_secret" in resp.json()
 
 
 def test_gateway_proxies_baggage(gw_integration):
@@ -1287,20 +1321,25 @@ def test_gateway_proxies_passengers(gw_integration):
     })
     headers = {"Authorization": f"Bearer {token}"}
 
+    from datetime import datetime, timezone as _tz
     profile = MagicMock()
     profile.id = uuid.uuid4()
     profile.user_id = user_id
+    profile.title = None
+    profile.gender = None
     profile.first_name = "Pax"
+    profile.middle_name = None
     profile.last_name = "User"
     profile.date_of_birth = None
     profile.nationality = "IE"
     profile.passport_number_encrypted = None
+    profile.passport_expiry = None
     profile.phone_number = "+3531234567"
     profile.loyalty_tier = "silver"
     profile.loyalty_points = 5000
     profile.meal_preference = None
     profile.seat_preference = "window"
-    profile.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
+    profile.created_at = datetime.now(_tz.utc)
 
     gw.passenger_db.execute = AsyncMock(return_value=_mock_result(
         scalar_one_or_none=profile))
@@ -1329,68 +1368,6 @@ def test_gateway_proxies_notifications(gw_integration):
 
 
 # ══════════════════════════════════════════════════════════════════
-#  Flow 8: Rate Limiting
-# ══════════════════════════════════════════════════════════════════
-
-def test_rate_limit_blocks_after_limit(gw_integration):
-    """After RATE_LIMIT_PUBLIC requests, returns 429."""
-    gw = gw_integration
-    gw.gw_mod.rate_limit_store.clear()
-
-    # Wire flight_db so proxied GET /api/v1/flights succeeds
-    result_mock = MagicMock()
-    result_mock.scalars.return_value.all.return_value = []
-    gw.flight_db.execute = AsyncMock(return_value=result_mock)
-
-    # Public proxied path — send RATE_LIMIT_PUBLIC requests (rate limiter counts each)
-    for i in range(gw.gw_mod.RATE_LIMIT_PUBLIC):
-        resp = gw.client.get("/api/v1/flights")
-        assert resp.status_code == 200, f"Request {i+1} failed with {resp.status_code}"
-
-    # Next request should be rate limited
-    resp = gw.client.get("/api/v1/flights")
-    assert resp.status_code == 429
-
-
-def test_rate_limit_partner_higher_limit(gw_integration):
-    """Partner API key gets higher rate limit (1000 req/min)."""
-    gw = gw_integration
-    gw.gw_mod.rate_limit_store.clear()
-
-    # Send 200 requests with API key — should all pass
-    for _ in range(200):
-        resp = gw.client.get("/api/v1/flights", headers={"x-api-key": "ak_partner"})
-    # 200 < 1000, should not be rate limited
-    assert resp.status_code != 429
-
-
-def test_rate_limit_resets_after_window(gw_integration):
-    """After the rate limit window expires, requests are allowed again."""
-    gw = gw_integration
-    gw.gw_mod.rate_limit_store.clear()
-
-    # Wire flight_db so proxied GET /api/v1/flights succeeds
-    result_mock = MagicMock()
-    result_mock.scalars.return_value.all.return_value = []
-    gw.flight_db.execute = AsyncMock(return_value=result_mock)
-
-    # Fill to limit with proxied requests
-    for _ in range(gw.gw_mod.RATE_LIMIT_PUBLIC):
-        gw.client.get("/api/v1/flights")
-
-    # Verify blocked
-    resp = gw.client.get("/api/v1/flights")
-    assert resp.status_code == 429
-
-    # Simulate window expiry by clearing store
-    gw.gw_mod.rate_limit_store.clear()
-
-    # Should be allowed now
-    resp = gw.client.get("/api/v1/flights")
-    assert resp.status_code != 429
-
-
-# ══════════════════════════════════════════════════════════════════
 #  Flow 9: Payment Refund → Booking Status + Event
 # ══════════════════════════════════════════════════════════════════
 
@@ -1410,19 +1387,35 @@ def test_refund_updates_booking_status_and_publishes_event(integration_services)
     existing_payment.amount = 199.99
     existing_payment.currency = "EUR"
     existing_payment.status = s.payment_mod.PaymentStatus.COMPLETED
-    existing_payment.payment_method = MagicMock(value="credit-card")
+    existing_payment.stripe_payment_intent_id = "pi_ref_test_123"
     existing_payment.idempotency_key = "ref-001"
     existing_payment.transaction_ref = "TXN-REF-001"
     existing_payment.failure_reason = None
-    existing_payment.card_token = "tok_ref"
-    existing_payment.card_last_four = "4242"
+    existing_payment.provider = "stripe"
+    existing_payment.payment_method_type = None
+    existing_payment.wallet_brand = None
+    existing_payment.last_four = None
     existing_payment.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
 
     s.payment_db.execute = AsyncMock(return_value=_mock_result(
         scalar_one_or_none=existing_payment))
 
     def fake_refresh(obj):
+        obj.id = payment_id
+        obj.booking_id = booking_id
+        obj.user_id = s.user_id
+        obj.amount = 199.99
+        obj.currency = "EUR"
         obj.status = MagicMock(value="refunded")
+        obj.provider = "stripe"
+        obj.idempotency_key = "ref-001"
+        obj.transaction_ref = "TXN-REF-001"
+        obj.failure_reason = None
+        obj.stripe_payment_intent_id = "pi_ref_test_123"
+        obj.payment_method_type = None
+        obj.wallet_brand = None
+        obj.last_four = None
+        obj.created_at = MagicMock(isoformat=MagicMock(return_value="2025-01-01T00:00:00"))
 
     s.payment_db.refresh = AsyncMock(side_effect=fake_refresh)
 
@@ -1500,8 +1493,13 @@ def test_baggage_status_change_publishes_event(integration_services):
 
     s.events.clear()
 
+    admin_token = create_access_token({
+        "sub": s.user_id, "username": "integ_user", "role": "admin",
+    })
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
     with TestClient(s.baggage_mod.app, raise_server_exceptions=False) as c:
-        resp = c.put(f"/api/v1/baggage/{tag_number}/status", json={
+        resp = c.put(f"/api/v1/baggage/{tag_number}/status", headers=admin_headers, json={
             "status": "in-transit",
             "location": "LHR Carousel 5",
         })

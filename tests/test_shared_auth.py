@@ -76,8 +76,10 @@ def test_decode_token_expired_raises():
 
 def test_decode_token_invalid_signature_raises():
     token = create_access_token({"sub": "u1"})
+    parts = token.split(".")
+    tampered = ".".join(parts[:-1]) + ".invalidsignature"
     with pytest.raises(HTTPException) as exc_info:
-        decode_token(token, secret="wrong-secret")
+        decode_token(tampered)
     assert exc_info.value.status_code == 401
 
 

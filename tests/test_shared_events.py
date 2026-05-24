@@ -70,7 +70,7 @@ def test_poll_returns_parsed_messages():
     mock_client = MagicMock()
     mock_client.receive_message.return_value = {
         "Messages": [
-            {"Body": json.dumps({"detail-type": "TestEvent"}), "ReceiptHandle": "rh1"},
+            {"Body": json.dumps({"detail-type": "TestEvent"}), "ReceiptHandle": "rh1", "MessageId": "msg-1"},
         ]
     }
 
@@ -85,6 +85,7 @@ def test_poll_returns_parsed_messages():
     assert len(results) == 1
     assert results[0]["body"]["detail-type"] == "TestEvent"
     assert results[0]["receipt_handle"] == "rh1"
+    assert results[0]["message_id"] == "msg-1"
 
 
 def test_poll_empty_queue():
@@ -107,7 +108,7 @@ def test_poll_handles_json_body():
     mock_client = MagicMock()
     mock_client.receive_message.return_value = {
         "Messages": [
-            {"Body": json.dumps(body_data), "ReceiptHandle": "rh2"},
+            {"Body": json.dumps(body_data), "ReceiptHandle": "rh2", "MessageId": "msg-2"},
         ]
     }
 

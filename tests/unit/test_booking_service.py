@@ -9,7 +9,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from shared.database import Base
 
@@ -20,7 +20,7 @@ sys.modules.setdefault("boto3", _mock_boto3)
 
 @pytest.fixture
 def booking_app(mock_db_session, auth_headers):
-    svc_path = os.path.join(os.path.dirname(__file__), "..", "services", "booking-service")
+    svc_path = os.path.join(os.path.dirname(__file__), "..", "..", "services", "booking-service")
     sys.path.insert(0, svc_path)
     Base.metadata.clear()
     for mod_name in ["models", "schemas"]:

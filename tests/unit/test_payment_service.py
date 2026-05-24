@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from shared.database import Base
 
@@ -36,7 +36,7 @@ _mock_stripe.error.SignatureVerificationError = _SignatureVerificationError
 
 @pytest.fixture
 def payment_app(mock_db_session, auth_headers):
-    svc_path = os.path.join(os.path.dirname(__file__), "..", "services", "payment-service")
+    svc_path = os.path.join(os.path.dirname(__file__), "..", "..", "services", "payment-service")
     sys.path.insert(0, svc_path)
     Base.metadata.clear()
     for mod_name in ["models", "schemas"]:

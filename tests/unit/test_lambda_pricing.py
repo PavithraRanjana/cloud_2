@@ -5,15 +5,19 @@ import json
 import importlib.util
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-# psycopg2 hangs on import, mock it before loading the handler module
+# pg8000 and psycopg2 are not installed; mock both before loading the handler module
 _mock_psycopg2 = MagicMock()
 sys.modules["psycopg2"] = _mock_psycopg2
+_mock_pg8000 = MagicMock()
+_mock_pg8000_dbapi = MagicMock()
+sys.modules["pg8000"] = _mock_pg8000
+sys.modules["pg8000.dbapi"] = _mock_pg8000_dbapi
 
 # Use importlib to load the specific handler file to avoid name collisions
 _handler_path = os.path.join(
-    os.path.dirname(__file__), "..", "lambdas", "pricing_recalculation", "handler.py"
+    os.path.dirname(__file__), "..", "..", "lambdas", "pricing_recalculation", "handler.py"
 )
 _spec = importlib.util.spec_from_file_location("pricing_handler", _handler_path)
 pricing_mod = importlib.util.module_from_spec(_spec)
@@ -78,17 +82,16 @@ def test_adjust_price_zero_total_seats():
 def test_handler_updates_flight_prices():
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    _mock_psycopg2.connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cursor
-
     mock_cursor.fetchall.return_value = [
         ("id-1", "AL100",
          100, 10, 200.0,
          30, 5, 500.0,
          10, 1, 1000.0),
     ]
-
-    result = handler({}, None)
+    with patch.object(pricing_mod, "pg8000") as mock_pg8000:
+        mock_pg8000.connect.return_value = mock_conn
+        result = handler({}, None)
     body = json.loads(result["body"])
     assert body["evaluated"] == 1
     assert body["updated"] == 1
@@ -98,11 +101,11 @@ def test_handler_updates_flight_prices():
 def test_handler_no_scheduled_flights():
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    _mock_psycopg2.connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cursor
     mock_cursor.fetchall.return_value = []
-
-    result = handler({}, None)
+    with patch.object(pricing_mod, "pg8000") as mock_pg8000:
+        mock_pg8000.connect.return_value = mock_conn
+        result = handler({}, None)
     body = json.loads(result["body"])
     assert body["evaluated"] == 0
     assert body["updated"] == 0
@@ -111,12 +114,12 @@ def test_handler_no_scheduled_flights():
 def test_handler_rolls_back_on_error():
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    _mock_psycopg2.connect.return_value = mock_conn
     mock_conn.cursor.return_value = mock_cursor
     mock_cursor.fetchall.side_effect = Exception("DB error")
-
-    try:
-        handler({}, None)
-    except Exception:
-        pass
+    with patch.object(pricing_mod, "pg8000") as mock_pg8000:
+        mock_pg8000.connect.return_value = mock_conn
+        try:
+            handler({}, None)
+        except Exception:
+            pass
     mock_conn.rollback.assert_called_once()

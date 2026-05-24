@@ -17,7 +17,7 @@ import pytest
 import httpx
 from fastapi import FastAPI
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from shared.database import Base
 from shared.auth import create_access_token
@@ -25,10 +25,14 @@ from shared.auth import create_access_token
 # Pre-mock boto3 and stripe to prevent import hang / missing package errors
 _mock_boto3 = MagicMock()
 sys.modules.setdefault("boto3", _mock_boto3)
-_mock_stripe = MagicMock()
-sys.modules.setdefault("stripe", _mock_stripe)
+# Always reference the shared stripe mock — test_payment_service.py (unit) may have
+# inserted it first when the full suite runs. Using setdefault would leave _mock_stripe
+# pointing at a different object from sys.modules["stripe"], breaking webhook mocks.
+if "stripe" not in sys.modules:
+    sys.modules["stripe"] = MagicMock()
+_mock_stripe = sys.modules["stripe"]
 
-PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..")
+PROJECT_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 
 
 # ══════════════════════════════════════════════════════════════════

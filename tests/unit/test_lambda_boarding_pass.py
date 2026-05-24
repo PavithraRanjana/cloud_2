@@ -4,8 +4,8 @@ import os
 import json
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lambdas", "boarding_pass_generator"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lambdas", "boarding_pass_generator"))
 
 # boto3 hangs on import in this environment, so mock it before importing handler
 mock_boto3_module = MagicMock()

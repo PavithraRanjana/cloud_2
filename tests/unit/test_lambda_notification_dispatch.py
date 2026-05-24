@@ -5,8 +5,8 @@ import json
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "lambdas", "notification_dispatch"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lambdas", "notification_dispatch"))
 
 from handler import handler, _render_template, TEMPLATES
 

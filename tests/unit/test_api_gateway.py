@@ -9,14 +9,14 @@ import pytest
 from fastapi.testclient import TestClient
 import httpx
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from shared.database import Base
 
 
 @pytest.fixture
 def gw_app():
-    svc_path = os.path.join(os.path.dirname(__file__), "..", "api-gateway")
+    svc_path = os.path.join(os.path.dirname(__file__), "..", "..", "api-gateway")
     sys.path.insert(0, svc_path)
     Base.metadata.clear()
     for mod_name in ["models", "schemas"]:

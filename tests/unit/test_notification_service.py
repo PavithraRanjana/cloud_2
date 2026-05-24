@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
 from shared.database import Base
 
@@ -20,7 +20,7 @@ sys.modules.setdefault("boto3", _mock_boto3)
 
 @pytest.fixture
 def notification_app(mock_db_session, auth_headers):
-    svc_path = os.path.join(os.path.dirname(__file__), "..", "services", "notification-service")
+    svc_path = os.path.join(os.path.dirname(__file__), "..", "..", "services", "notification-service")
     sys.path.insert(0, svc_path)
     Base.metadata.clear()
     for mod_name in ["models", "schemas"]:
@@ -220,7 +220,7 @@ def test_process_event_booking_cancelled(notification_app):
 
 def test_sqs_polling_enabled_starts_thread():
     """When ENABLE_SQS_POLLING=true, lifespan should start a daemon thread."""
-    svc_path = os.path.join(os.path.dirname(__file__), "..", "services", "notification-service")
+    svc_path = os.path.join(os.path.dirname(__file__), "..", "..", "services", "notification-service")
     if svc_path not in sys.path:
         sys.path.insert(0, svc_path)
 

@@ -17,10 +17,11 @@ const ADMIN_LINKS = [
 ];
 
 const PUBLIC_LINKS = [
-  { to: "/flights",   label: "Flights"         },
-  { to: "/bookings",  label: "Bookings"        },
-  { to: "/checkin",   label: "Check-in"        },
-  { to: "/baggage",   label: "Baggage"         },
+  { to: "/flights",       label: "Flights"       },
+  { to: "/bookings",      label: "Bookings"      },
+  { to: "/checkin",       label: "Check-in"      },
+  { to: "/baggage",       label: "Baggage"       },
+  { to: "/notifications", label: "Notifications" },
 ];
 
 export function Navbar() {

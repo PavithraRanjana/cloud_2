@@ -2,8 +2,12 @@
 import sys
 import os
 import uuid
+import json
 import importlib.util
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pybreaker
+from sqlalchemy.exc import IntegrityError
 
 import pytest
 from fastapi.testclient import TestClient
@@ -264,6 +268,143 @@ def test_get_checkin_not_found(checkin_app, auth_headers):
     db.execute.return_value = result_mock
 
     resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_get_checkin_from_cache(checkin_app, auth_headers):
+    """Cache hit on GET /checkin/{id} should bypass DB and return cached value."""
+    c, db, mod = checkin_app
+    headers = auth_headers()
+    booking_id = str(uuid.uuid4())
+
+    cached = {
+        "id": str(uuid.uuid4()),
+        "booking_id": booking_id,
+        "flight_id": str(uuid.uuid4()),
+        "passenger_name": "Cached Pax",
+        "seat_number": "5C",
+        "boarding_group": "A",
+        "gate": "C1",
+        "status": "boarding-pass-issued",
+        "boarding_pass_url": f"/api/v1/checkin/{booking_id}/boarding-pass",
+        "has_baggage": False,
+        "seat_selected_by_user": True,
+        "created_at": "2026-05-24T10:00:00+00:00",
+    }
+    mod.redis_client = MagicMock()
+    mod.redis_client.get.return_value = json.dumps(cached)
+
+    resp = c.get(f"/api/v1/checkin/{booking_id}", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["passenger_name"] == "Cached Pax"
+    db.execute.assert_not_called()
+
+
+def test_checkin_flush_integrity_error_returns_409(checkin_app, auth_headers):
+    """Race-condition IntegrityError on flush should return 409."""
+    c, db, mod = checkin_app
+    headers = auth_headers()
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+    db.flush = AsyncMock(side_effect=IntegrityError("unique constraint", None, Exception()))
+
+    resp = c.post("/api/v1/checkin", headers=headers, json={
+        "booking_id": str(uuid.uuid4()),
+        "flight_id": str(uuid.uuid4()),
+        "passenger_name": "Race Person",
+    })
+    assert resp.status_code == 409
+
+
+def test_checkin_circuit_breaker_open_silenced(checkin_app, auth_headers):
+    """Open circuit breaker on booking status update should not abort the check-in."""
+    c, db, mod = checkin_app
+    headers = auth_headers()
+
+    no_existing = MagicMock()
+    no_existing.scalar_one_or_none.return_value = None
+    db.execute.return_value = no_existing
+
+    def fake_refresh(obj):
+        obj.id = uuid.uuid4()
+        obj.booking_id = str(uuid.uuid4())
+        obj.flight_id = str(uuid.uuid4())
+        obj.passenger_name = "CB Test"
+        obj.seat_number = "9D"
+        obj.boarding_group = "B"
+        obj.gate = None
+        obj.status = MagicMock(value="boarding-pass-issued")
+        obj.boarding_pass_url = "/bp"
+        obj.has_baggage = False
+        obj.created_at = MagicMock()
+
+    db.refresh = AsyncMock(side_effect=fake_refresh)
+    mod.event_publisher = None
+
+    with patch.object(mod, "breaker_call_async",
+                      new=AsyncMock(side_effect=pybreaker.CircuitBreakerError(mod.booking_breaker))):
+        resp = c.post("/api/v1/checkin", headers=headers, json={
+            "booking_id": str(uuid.uuid4()),
+            "flight_id": str(uuid.uuid4()),
+            "passenger_name": "CB Test",
+        })
+    assert resp.status_code == 201
+
+
+def test_get_boarding_pass_pdf(checkin_app, auth_headers):
+    """PDF boarding pass endpoint should generate and return PDF bytes."""
+    c, db, mod = checkin_app
+    headers = auth_headers()
+
+    checkin = MagicMock()
+    checkin.passenger_name = "JOHN DOE"
+    checkin.seat_number = "12A"
+    checkin.boarding_group = "B"
+    checkin.gate = "A5"
+    checkin.flight_id = uuid.uuid4()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = checkin
+    db.execute.return_value = result_mock
+
+    flight_resp = MagicMock()
+    flight_resp.status_code = 200
+    flight_resp.json.return_value = {
+        "flight_number": "AL100", "airline": "AeroLink",
+        "origin": "DUB", "destination": "LHR",
+        "departure_time": "10:30", "arrival_time": "12:30",
+        "departure_date": "2026-06-01", "gate": "A5",
+    }
+    booking_resp = MagicMock()
+    booking_resp.status_code = 200
+    booking_resp.json.return_value = {
+        "cabin_class": "economy", "booking_reference": "ALTEST01",
+    }
+
+    with patch("httpx.AsyncClient") as mock_httpx:
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[flight_resp, booking_resp])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_httpx.return_value = mock_client
+
+        resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass/pdf", headers=headers)
+
+    assert resp.status_code == 200
+    assert "pdf" in resp.headers["content-type"]
+    assert len(resp.content) > 0
+
+
+def test_get_boarding_pass_pdf_not_found(checkin_app, auth_headers):
+    c, db, mod = checkin_app
+    headers = auth_headers()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.get(f"/api/v1/checkin/{uuid.uuid4()}/boarding-pass/pdf", headers=headers)
     assert resp.status_code == 404
 
 

@@ -1,12 +1,13 @@
 """Tests for shared/auth.py — JWT, password hashing, RBAC."""
 import time
 from datetime import datetime, timezone, timedelta
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
 from jose import jwt
 
+import shared.auth as auth_module
 from shared.auth import (
     hash_password, verify_password,
     create_access_token, create_refresh_token,
@@ -136,3 +137,138 @@ def test_get_current_user_missing_header():
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(creds)
     assert exc_info.value.status_code == 401
+
+
+# ── Cognito helper functions ─────────────────────────────────────
+
+def test_cognito_issuer_prod_format():
+    with patch.object(auth_module, "_AWS_REGION", "eu-west-1"), \
+         patch.object(auth_module, "_COGNITO_USER_POOL_ID", "eu-west-1_ABC"):
+        result = auth_module._cognito_issuer_prod()
+    assert result == "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_ABC"
+
+
+def test_jwks_base_url_with_endpoint_url():
+    with patch.object(auth_module, "_AWS_ENDPOINT_URL", "http://localhost:4566"), \
+         patch.object(auth_module, "_COGNITO_USER_POOL_ID", "eu-west-1_POOL"):
+        result = auth_module._jwks_base_url()
+    assert result == "http://localhost:4566/eu-west-1_POOL"
+
+
+def test_jwks_base_url_without_endpoint_url():
+    with patch.object(auth_module, "_AWS_ENDPOINT_URL", ""), \
+         patch.object(auth_module, "_AWS_REGION", "us-east-1"), \
+         patch.object(auth_module, "_COGNITO_USER_POOL_ID", "us-east-1_XYZ"):
+        result = auth_module._jwks_base_url()
+    assert "us-east-1.amazonaws.com" in result
+    assert "us-east-1_XYZ" in result
+
+
+def test_fetch_jwks_returns_cached_when_fresh():
+    original_cache = auth_module._jwks_cache
+    original_time = auth_module._jwks_fetched_at
+    try:
+        auth_module._jwks_cache = {"kid-cached": {"kty": "RSA"}}
+        auth_module._jwks_fetched_at = time.time()
+        result = auth_module._fetch_jwks()
+        assert "kid-cached" in result
+    finally:
+        auth_module._jwks_cache = original_cache
+        auth_module._jwks_fetched_at = original_time
+
+
+def test_fetch_jwks_refreshes_on_empty_cache():
+    original_cache = auth_module._jwks_cache
+    original_time = auth_module._jwks_fetched_at
+    try:
+        auth_module._jwks_cache = {}
+        auth_module._jwks_fetched_at = 0.0
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {"keys": [{"kid": "fresh-kid", "kty": "RSA"}]}
+        with patch.object(auth_module, "_jwks_base_url", return_value="http://fake-jwks"), \
+             patch("httpx.get", return_value=mock_resp):
+            result = auth_module._fetch_jwks()
+        assert "fresh-kid" in result
+    finally:
+        auth_module._jwks_cache = original_cache
+        auth_module._jwks_fetched_at = original_time
+
+
+# ── _claims_to_user ──────────────────────────────────────────────
+
+def test_claims_to_user_with_groups_uses_first_group_as_role():
+    claims = {
+        "sub": "abc-123",
+        "email": "user@example.com",
+        "cognito:username": "testuser",
+        "cognito:groups": ["admin", "passenger"],
+        "name": "Test User",
+    }
+    user = auth_module._claims_to_user(claims, "raw_token")
+    assert user["sub"] == "abc-123"
+    assert user["role"] == "admin"
+    assert user["groups"] == ["admin", "passenger"]
+    assert user["full_name"] == "Test User"
+    assert user["_token"] == "raw_token"
+
+
+def test_claims_to_user_no_groups_defaults_to_passenger():
+    claims = {
+        "sub": "xyz",
+        "email": "a@b.com",
+        "cognito:username": "u1",
+        "given_name": "First",
+        "family_name": "Last",
+    }
+    user = auth_module._claims_to_user(claims, "tok")
+    assert user["role"] == "passenger"
+    assert user["full_name"] == "First Last"
+
+
+def test_claims_to_user_sub_used_as_username_fallback():
+    claims = {"sub": "sub-id-999"}
+    user = auth_module._claims_to_user(claims, "t")
+    assert user["username"] == "sub-id-999"
+
+
+# ── _verify_cognito_token ────────────────────────────────────────
+
+def test_verify_cognito_token_success():
+    mock_claims = {
+        "sub": "u-123", "email": "u@e.com",
+        "cognito:username": "uname",
+        "cognito:groups": ["passenger"],
+        "iss": "https://cognito-idp.eu-west-1.amazonaws.com/pool",
+    }
+    with patch.object(auth_module, "_COGNITO_USER_POOL_ID", "eu-west-1_POOL"), \
+         patch.object(auth_module, "_AWS_ENDPOINT_URL", ""), \
+         patch.object(auth_module, "_fetch_jwks", return_value={"kid-1": {"kty": "RSA"}}), \
+         patch.object(auth_module.jwt, "get_unverified_header",
+                      return_value={"kid": "kid-1", "alg": "RS256"}), \
+         patch.object(auth_module.jwt, "get_unverified_claims", return_value=mock_claims), \
+         patch.object(auth_module.jwt, "decode", return_value=mock_claims):
+        result = auth_module._verify_cognito_token("fake.jwt.token")
+    assert result["sub"] == "u-123"
+
+
+def test_verify_cognito_token_unknown_kid_raises_401():
+    mock_claims = {"sub": "u1", "iss": "https://example.com/pool"}
+    with patch.object(auth_module, "_COGNITO_USER_POOL_ID", "eu-west-1_POOL"), \
+         patch.object(auth_module, "_AWS_ENDPOINT_URL", ""), \
+         patch.object(auth_module, "_fetch_jwks", return_value={"other-kid": {}}), \
+         patch.object(auth_module.jwt, "get_unverified_header",
+                      return_value={"kid": "unknown-kid", "alg": "RS256"}), \
+         patch.object(auth_module.jwt, "get_unverified_claims", return_value=mock_claims):
+        with pytest.raises(HTTPException) as exc_info:
+            auth_module._verify_cognito_token("fake.jwt.token")
+    assert exc_info.value.status_code == 401
+
+
+def test_decode_token_routes_to_cognito_when_pool_id_set():
+    mock_user = {"sub": "u1", "role": "passenger", "email": "u@e.com",
+                 "username": "u1", "full_name": "", "groups": []}
+    with patch.object(auth_module, "_COGNITO_USER_POOL_ID", "eu-west-1_POOL"), \
+         patch.object(auth_module, "_verify_cognito_token", return_value={}), \
+         patch.object(auth_module, "_claims_to_user", return_value=mock_user):
+        result = auth_module.decode_token("fake.token")
+    assert result["sub"] == "u1"

@@ -271,6 +271,171 @@ def test_sqs_polling_enabled_starts_thread():
 
 # ── poll_events – consumer creation failure ───────────────────────
 
+def test_ses_send_exception_silenced(notification_app):
+    """SES send errors should be caught and not propagate."""
+    c, db, mod = notification_app
+    mod.ses.client.send_email.side_effect = Exception("SES unavailable")
+    mod.ses.send(to_email="a@b.com", subject="Test", body="Body")  # must not raise
+
+
+def test_ses_verify_sender_exception_silenced(notification_app):
+    """SES verify_sender errors should be caught and not propagate."""
+    c, db, mod = notification_app
+    mod.ses.client.verify_email_identity.side_effect = Exception("SES error")
+    mod.ses.verify_sender()  # must not raise
+
+
+def test_process_event_deduplication_skips_duplicate(notification_app):
+    """process_event should skip silently when dedup key already exists."""
+    c, db, mod = notification_app
+    mock_redis = MagicMock()
+    mock_redis.set.return_value = None  # SET NX returns None → key exists → dedup fires
+    mod.redis_client = mock_redis
+
+    mod.process_event({
+        "detail-type": "BookingCreated",
+        "detail": {"booking_reference": "DUP001", "passenger_name": "Dup"},
+        "id": "msg-dup-001",
+    })
+    # No notification should be persisted — SyncSessionFactory not called via dedup path
+    # (the early return prevents DB access)
+
+
+def test_process_event_creates_notification_in_db(notification_app):
+    """process_event should persist notification via SyncSessionFactory."""
+    c, db, mod = notification_app
+    mock_redis = MagicMock()
+    mock_redis.set.return_value = True  # SET NX succeeds → new key → proceed
+    mod.redis_client = mock_redis
+
+    mock_session = MagicMock()
+    mock_ctx = MagicMock()
+    mock_ctx.__enter__ = MagicMock(return_value=mock_session)
+    mock_ctx.__exit__ = MagicMock(return_value=False)
+    mod.SyncSessionFactory = MagicMock(return_value=mock_ctx)
+
+    mod.process_event({
+        "detail-type": "BookingCreated",
+        "detail": {
+            "booking_reference": "AL1NEW01",
+            "passenger_name": "New Pax",
+            "flight_id": "flight-3",
+            "total_price": "199.00",
+            "passenger_email": "pax@test.com",
+        },
+        "id": "msg-new-001",
+    })
+    mock_session.add.assert_called_once()
+    mock_session.commit.assert_called_once()
+
+
+def test_list_notifications_with_email_filter(notification_app):
+    """list_notifications should add WHERE clause when user has email claim."""
+    c, db, mod = notification_app
+    from shared.auth import create_access_token
+    import uuid as _uuid
+    token = create_access_token({
+        "sub": str(_uuid.uuid4()),
+        "role": "passenger",
+        "email": "filter@test.com",
+    })
+    headers = {"Authorization": f"Bearer {token}"}
+
+    result_mock = MagicMock()
+    result_mock.scalars.return_value.all.return_value = []
+    db.execute.return_value = result_mock
+
+    resp = c.get("/api/v1/notifications", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_mark_read_success(notification_app, auth_headers):
+    c, db, mod = notification_app
+    headers = auth_headers()
+
+    notif = MagicMock()
+    notif.id = uuid.uuid4()
+    notif.recipient_email = "t@t.com"
+    notif.recipient_name = "T"
+    notif.notification_type = MagicMock(value="email")
+    notif.subject = "S"
+    notif.body = "B"
+    notif.event_type = "E"
+    notif.status = MagicMock(value="sent")
+    notif.is_read = False
+    notif.created_at = MagicMock()
+
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = notif
+    db.execute.return_value = result_mock
+    db.refresh = AsyncMock(return_value=None)
+
+    resp = c.patch(f"/api/v1/notifications/{notif.id}/read", headers=headers)
+    assert resp.status_code == 200
+    assert notif.is_read is True
+
+
+def test_mark_read_not_found(notification_app, auth_headers):
+    c, db, mod = notification_app
+    headers = auth_headers()
+    result_mock = MagicMock()
+    result_mock.scalar_one_or_none.return_value = None
+    db.execute.return_value = result_mock
+
+    resp = c.patch(f"/api/v1/notifications/{uuid.uuid4()}/read", headers=headers)
+    assert resp.status_code == 404
+
+
+def test_get_dlq_stats(notification_app, auth_headers):
+    c, db, mod = notification_app
+    headers = auth_headers(role="admin")
+
+    mod._sqs = MagicMock()
+    mod._sqs.get_queue_attributes.return_value = {
+        "Attributes": {
+            "ApproximateNumberOfMessages": "3",
+            "ApproximateNumberOfMessagesNotVisible": "1",
+        }
+    }
+    mod._sqs.receive_message.return_value = {
+        "Messages": [
+            {"MessageId": "m1", "Body": '{"detail-type":"test"}',
+             "Attributes": {"ApproximateReceiveCount": "2"}},
+        ]
+    }
+
+    resp = c.get("/api/v1/notifications/dlq", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["queue_depth"] == 3
+    assert body["in_flight"] == 1
+    assert len(body["samples"]) == 1
+
+
+def test_reprocess_dlq(notification_app, auth_headers):
+    c, db, mod = notification_app
+    headers = auth_headers(role="admin")
+
+    mod._sqs = MagicMock()
+    # First poll returns 2 messages, second returns empty → loop ends
+    mod._sqs.receive_message.side_effect = [
+        {"Messages": [
+            {"MessageId": "m1", "Body": "msg1", "ReceiptHandle": "rh1"},
+            {"MessageId": "m2", "Body": "msg2", "ReceiptHandle": "rh2"},
+        ]},
+        {"Messages": []},
+    ]
+
+    resp = c.post("/api/v1/notifications/dlq/reprocess", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["moved"] == 2
+    assert body["errors"] == 0
+    assert mod._sqs.send_message.call_count == 2
+    assert mod._sqs.delete_message.call_count == 2
+
+
 def test_poll_events_consumer_creation_fails(notification_app):
     """If EventConsumer raises, poll_events should return early without crashing."""
     c, db, mod = notification_app

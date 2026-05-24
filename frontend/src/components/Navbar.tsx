@@ -21,7 +21,6 @@ const PUBLIC_LINKS = [
   { to: "/bookings",  label: "Bookings"        },
   { to: "/checkin",   label: "Check-in"        },
   { to: "/baggage",   label: "Baggage"         },
-  { to: "/track",     label: "Track Baggage"   },
 ];
 
 export function Navbar() {

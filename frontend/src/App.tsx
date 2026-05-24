@@ -47,9 +47,9 @@ export default function App() {
               {/* Public routes */}
               <Route index          element={<HomeRoute />} />
               <Route path="flights" element={<ErrorBoundary><FlightsPage /></ErrorBoundary>} />
-              <Route path="track"   element={<ErrorBoundary><BaggageTrackingPage /></ErrorBoundary>} />
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>
+                <Route path="track"         element={<ErrorBoundary><BaggageTrackingPage /></ErrorBoundary>} />
                 <Route path="book"          element={<ErrorBoundary><BookFlightPage /></ErrorBoundary>} />
                 <Route path="bookings"      element={<ErrorBoundary><BookingsPage /></ErrorBoundary>} />
                 <Route path="checkin"       element={<ErrorBoundary><CheckInPage /></ErrorBoundary>} />

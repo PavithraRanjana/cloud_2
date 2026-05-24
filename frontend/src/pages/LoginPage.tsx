@@ -7,7 +7,9 @@ export function LoginPage() {
   const { loginWithCognito, setTokens } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const justRegistered = (location.state as { registered?: boolean } | null)?.registered;
+  const state = location.state as { registered?: boolean; from?: string } | null;
+  const justRegistered = state?.registered;
+  const from = state?.from ?? "/";
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -21,7 +23,7 @@ export function LoginPage() {
     try {
       const { id_token, refresh_token } = await localDevLogin(username, password);
       setTokens(id_token, refresh_token);
-      navigate('/');
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid username or password.');
     } finally {

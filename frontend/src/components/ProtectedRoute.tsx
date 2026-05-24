@@ -1,16 +1,9 @@
-import { useEffect } from "react";
-import { Navigate, Outlet, useNavigate } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 export function ProtectedRoute() {
   const { token, isLoading } = useAuth();
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const handler = () => navigate("/login", { replace: true });
-    window.addEventListener("auth:session-expired", handler);
-    return () => window.removeEventListener("auth:session-expired", handler);
-  }, [navigate]);
+  const location = useLocation();
 
   if (isLoading) {
     return (
@@ -20,5 +13,7 @@ export function ProtectedRoute() {
     );
   }
 
-  return token ? <Outlet /> : <Navigate to="/login" replace />;
+  return token
+    ? <Outlet />
+    : <Navigate to="/login" state={{ from: location.pathname }} replace />;
 }

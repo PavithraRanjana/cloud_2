@@ -268,6 +268,7 @@ def test_decode_token_routes_to_cognito_when_pool_id_set():
     mock_user = {"sub": "u1", "role": "passenger", "email": "u@e.com",
                  "username": "u1", "full_name": "", "groups": []}
     with patch.object(auth_module, "_COGNITO_USER_POOL_ID", "eu-west-1_POOL"), \
+         patch.object(auth_module.jwt, "get_unverified_header", return_value={"alg": "RS256"}), \
          patch.object(auth_module, "_verify_cognito_token", return_value={}), \
          patch.object(auth_module, "_claims_to_user", return_value=mock_user):
         result = auth_module.decode_token("fake.token")

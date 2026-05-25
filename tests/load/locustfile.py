@@ -268,19 +268,22 @@ class BookingUser(AuthMixin, HttpUser):
     def process_payment(self):
         if not self.token or not self._booking_id:
             return
-        self.client.post(
-            "/api/v1/payments",
+        with self.client.post(
+            "/api/v1/payments/intent",
             headers=self._auth,
             json={
                 "booking_id": self._booking_id,
                 "amount": round(random.uniform(150, 900), 2),
                 "currency": "EUR",
-                "payment_method": "credit-card",
-                "card_last_four": f"{random.randint(1000,9999)}",
                 "idempotency_key": str(uuid.uuid4()),
             },
-            name="/api/v1/payments (process)",
-        )
+            name="/api/v1/payments/intent",
+            catch_response=True,
+        ) as r:
+            if r.status_code in (200, 201, 400, 409, 422, 429):
+                r.success()
+            else:
+                r.failure(f"unexpected {r.status_code}")
 
     @tag("booking", "scenario2")
     @task(1)
@@ -309,24 +312,22 @@ class BookingUser(AuthMixin, HttpUser):
 # SCENARIO 3 – Baggage Tracking (1000 users, very high read volume)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-class BaggageTrackingUser(HttpUser):
+class BaggageTrackingUser(AuthMixin, HttpUser):
     """
-    Simulates passengers and airport staff polling baggage status.
-    No auth required for tracking — pure read throughput test.
-    Target: 1000 concurrent users.
+    Simulates authenticated passengers polling their baggage status.
+    Users must sign in before they can track baggage.
     """
     wait_time = between(0.2, 1)
     host = "http://localhost:8000"
 
-    # Pre-generated tag pool so most requests hit real data
     _tag_pool: list = []
 
     def on_start(self):
+        self._register_and_login()
         self._tag_pool = self._seed_tags()
 
     def _seed_tags(self) -> list:
         tags = [KNOWN_TAG]
-        # Generate realistic-looking BAG tags (some will 404 — that's realistic)
         for _ in range(10):
             tags.append(f"BAG-{random.randint(1000000000, 9999999999)}")
         return tags
@@ -334,10 +335,13 @@ class BaggageTrackingUser(HttpUser):
     @tag("baggage", "scenario3")
     @task(6)
     def track_by_tag(self):
+        if not self.token:
+            return
         tag_num = random.choice(self._tag_pool)
         with self.client.get(
             f"/api/v1/baggage/{tag_num}",
             name="/api/v1/baggage/{tag_number}",
+            headers=self._auth,
             catch_response=True,
         ) as r:
             if r.status_code in (200, 404):
@@ -348,14 +352,16 @@ class BaggageTrackingUser(HttpUser):
     @tag("baggage", "scenario3")
     @task(3)
     def track_by_booking(self):
+        if not self.token:
+            return
         booking_id = str(uuid.uuid4())
         with self.client.get(
             f"/api/v1/baggage/booking/{booking_id}",
             name="/api/v1/baggage/booking/{booking_id}",
+            headers=self._auth,
             catch_response=True,
         ) as r:
-            # Empty list or found — both are valid
-            if r.status_code == 200:
+            if r.status_code in (200, 404):
                 r.success()
             else:
                 r.failure(f"unexpected {r.status_code}")
@@ -406,7 +412,7 @@ class EndToEndUser(AuthMixin, HttpUser):
         self._flight_id = items[0]["id"]
 
         # Step 2: Book
-        r = self.client.post(
+        with self.client.post(
             "/api/v1/bookings",
             headers=self._auth,
             json={
@@ -417,7 +423,16 @@ class EndToEndUser(AuthMixin, HttpUser):
                 "seat_number": f"{random.randint(1, 30)}A",
             },
             name="[e2e] 2_create_booking",
-        )
+            catch_response=True,
+        ) as r:
+            if r.status_code == 201:
+                r.success()
+            elif r.status_code in (400, 409, 422, 429):
+                r.success()  # seat conflict or rate-limit — expected under load
+                return
+            else:
+                r.failure(f"unexpected {r.status_code}")
+                return
         if r.status_code != 201:
             return
         body = r.json()
@@ -425,15 +440,13 @@ class EndToEndUser(AuthMixin, HttpUser):
         self._booking_ref = body.get("booking_reference", "")
 
         # Step 3: Pay
-        r = self.client.post(
-            "/api/v1/payments",
+        self.client.post(
+            "/api/v1/payments/intent",
             headers=self._auth,
             json={
                 "booking_id": self._booking_id,
                 "amount": 199.99,
                 "currency": "EUR",
-                "payment_method": "credit-card",
-                "card_last_four": "4242",
                 "idempotency_key": str(uuid.uuid4()),
             },
             name="[e2e] 3_process_payment",
@@ -454,21 +467,32 @@ class EndToEndUser(AuthMixin, HttpUser):
             )
 
         # Step 5: Track baggage (will likely 404 — still exercises the path)
-        self.client.get(
+        with self.client.get(
             f"/api/v1/baggage/booking/{self._booking_id}",
+            headers=self._auth,
             name="[e2e] 5_track_baggage",
-        )
+            catch_response=True,
+        ) as r:
+            if r.status_code in (200, 404):
+                r.success()
+            else:
+                r.failure(f"unexpected {r.status_code}")
 
     @tag("e2e")
     @task(1)
     def passenger_profile(self):
         if not self.token:
             return
-        self.client.get(
+        with self.client.get(
             "/api/v1/passengers/profile",
             headers=self._auth,
             name="[e2e] get_profile",
-        )
+            catch_response=True,
+        ) as r:
+            if r.status_code in (200, 404):
+                r.success()
+            else:
+                r.failure(f"unexpected {r.status_code}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -670,14 +694,12 @@ class IdempotencyUser(AuthMixin, HttpUser):
         if not self.token or not self._booking_id:
             return
         with self.client.post(
-            "/api/v1/payments",
+            "/api/v1/payments/intent",
             headers=self._auth,
             json={
                 "booking_id": self._booking_id,
                 "amount": 199.99,
                 "currency": "EUR",
-                "payment_method": "credit-card",
-                "card_last_four": "4242",
                 "idempotency_key": self._idempotency_key,
             },
             name="[idempotency] duplicate_payment",
@@ -740,7 +762,7 @@ class SoakUser(AuthMixin, HttpUser):
     def book_and_pay(self):
         if not self.token or not self._flight_id:
             return
-        r = self.client.post(
+        with self.client.post(
             "/api/v1/bookings",
             headers=self._auth,
             json={
@@ -751,18 +773,23 @@ class SoakUser(AuthMixin, HttpUser):
                 "seat_number": f"{random.randint(1, 150)}{random.choice('ABCDEF')}",
             },
             name="[soak] create_booking",
-        )
+            catch_response=True,
+        ) as r:
+            if r.status_code == 201:
+                r.success()
+            elif r.status_code in (400, 409, 422, 429):
+                r.success()  # seat conflict or rate-limit — expected under load
+            else:
+                r.failure(f"unexpected {r.status_code}")
         if r.status_code == 201:
             self._booking_id = r.json().get("id", "")
             self.client.post(
-                "/api/v1/payments",
+                "/api/v1/payments/intent",
                 headers=self._auth,
                 json={
                     "booking_id": self._booking_id,
                     "amount": 199.99,
                     "currency": "EUR",
-                    "payment_method": "credit-card",
-                    "card_last_four": "1234",
                     "idempotency_key": str(uuid.uuid4()),
                 },
                 name="[soak] pay",

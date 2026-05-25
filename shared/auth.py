@@ -155,11 +155,19 @@ def decode_token(token: str, secret: str = DEFAULT_SECRET,
     """Verify the bearer token and return a normalized user dict.
 
     Production: RS256 validation against Cognito JWKS.
-    Local dev:  HS256 validation against JWT_SECRET (when COGNITO_USER_POOL_ID is unset).
+    Local dev:  HS256 validation against JWT_SECRET.
+    When COGNITO_USER_POOL_ID is set but the token is HS256 (local login flow),
+    fall back to HS256 validation so the two auth paths can coexist.
     """
     if _COGNITO_USER_POOL_ID:
-        claims = _verify_cognito_token(token)
-        return _claims_to_user(claims, token)
+        try:
+            header = jwt.get_unverified_header(token)
+        except JWTError:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
+                                detail="Malformed token")
+        if header.get("alg", "RS256") != "HS256":
+            claims = _verify_cognito_token(token)
+            return _claims_to_user(claims, token)
     return _verify_hs256_token(token)
 
 

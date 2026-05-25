@@ -1,4 +1,5 @@
 .env
+.env.prod
 frontend/.env.local
 infrastructure/localstack/cognito.env
 venv/

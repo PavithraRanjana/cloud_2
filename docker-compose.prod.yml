@@ -1,0 +1,287 @@
+services:
+  # ──────────────────────────────────────────────
+  # Data layer — runs on the EC2 instance
+  # ──────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: aerolink
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # API Gateway
+  # ──────────────────────────────────────────────
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SERVICE_NAME=api-gateway
+      - AUTH_SERVICE_URL=http://auth-service:8001
+      - FLIGHT_SERVICE_URL=http://flight-service:8002
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - PAYMENT_SERVICE_URL=http://payment-service:8004
+      - BAGGAGE_SERVICE_URL=http://baggage-service:8005
+      - CHECKIN_SERVICE_URL=http://checkin-service:8006
+      - PASSENGER_SERVICE_URL=http://passenger-service:8007
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8008
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
+      - AWS_REGION=us-east-1
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      flight-service:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ──────────────────────────────────────────────
+  # Microservices
+  # ──────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth-service/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=auth-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=120
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  flight-service:
+    build:
+      context: .
+      dockerfile: services/flight-service/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - SERVICE_NAME=flight-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - REDIS_URL=redis://redis:6379/1
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+      - EVENT_BUS_NAME=aerolink-events
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  booking-service:
+    build:
+      context: .
+      dockerfile: services/booking-service/Dockerfile
+    ports:
+      - "8003:8003"
+    environment:
+      - SERVICE_NAME=booking-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - FLIGHT_SERVICE_URL=http://flight-service:8002
+      - PAYMENT_SERVICE_URL=http://payment-service:8004
+      - REDIS_URL=redis://redis:6379/2
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+      - EVENT_BUS_NAME=aerolink-events
+    depends_on:
+      postgres:
+        condition: service_healthy
+      flight-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment-service/Dockerfile
+    ports:
+      - "8004:8004"
+    environment:
+      - SERVICE_NAME=payment-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - PASSENGER_SERVICE_URL=http://passenger-service:8007
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - REDIS_URL=redis://redis:6379/3
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+      - EVENT_BUS_NAME=aerolink-events
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  baggage-service:
+    build:
+      context: .
+      dockerfile: services/baggage-service/Dockerfile
+    ports:
+      - "8005:8005"
+    environment:
+      - SERVICE_NAME=baggage-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - REDIS_URL=redis://redis:6379/4
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+      - EVENT_BUS_NAME=aerolink-events
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  checkin-service:
+    build:
+      context: .
+      dockerfile: services/checkin-service/Dockerfile
+    ports:
+      - "8006:8006"
+    environment:
+      - SERVICE_NAME=checkin-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - FLIGHT_SERVICE_URL=http://flight-service:8002
+      - REDIS_URL=redis://redis:6379/5
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+      - EVENT_BUS_NAME=aerolink-events
+      - S3_BUCKET=aerolink-documents
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  passenger-service:
+    build:
+      context: .
+      dockerfile: services/passenger-service/Dockerfile
+    ports:
+      - "8007:8007"
+    environment:
+      - SERVICE_NAME=passenger-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - REDIS_URL=redis://redis:6379/6
+      - BOOKING_SERVICE_URL=http://booking-service:8003
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8008
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    ports:
+      - "8008:8008"
+    environment:
+      - SERVICE_NAME=notification-service
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER}:${DB_PASSWORD}@postgres:5432/aerolink
+      - REDIS_URL=redis://redis:6379/7
+      - JWT_SECRET=${JWT_SECRET}
+      - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - AWS_REGION=us-east-1
+      - ENABLE_SQS_POLLING=true
+      - SES_SENDER_EMAIL=${SES_SENDER_EMAIL}
+      - SQS_QUEUE_URL=https://sqs.us-east-1.amazonaws.com/097279986320/aerolink-notifications
+      - SQS_DLQ_URL=https://sqs.us-east-1.amazonaws.com/097279986320/aerolink-notifications-dlq
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8008/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

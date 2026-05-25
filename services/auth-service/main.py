@@ -13,7 +13,8 @@ from shared.health import check_db, check_redis
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from shared.config import BaseConfig
 from shared.database import create_db_engine, create_session_factory, Base
-from shared.auth import (hash_password, verify_password, create_access_token,
+from shared.auth import (hash_password, verify_password, hash_password_async,
+                         verify_password_async, create_access_token,
                          create_refresh_token, decode_token, get_current_user)
 from shared.audit import AuditLog, record_audit
 from shared.cache import create_redis_client, redis_incr_with_ttl, redis_delete
@@ -93,7 +94,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
     user = User(
         email=data.email,
         username=data.username,
-        hashed_password=hash_password(data.password),
+        hashed_password=await hash_password_async(data.password),
         full_name=data.full_name,
         role=role,
     )
@@ -115,7 +116,7 @@ async def login(data: UserLogin, request: Request, db: AsyncSession = Depends(ge
 
     result = await db.execute(select(User).where(User.username == data.username))
     user = result.scalar_one_or_none()
-    if not user or not verify_password(data.password, user.hashed_password):
+    if not user or not await verify_password_async(data.password, user.hashed_password):
         redis_incr_with_ttl(redis_client, fail_key, LOGIN_FAIL_TTL)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:

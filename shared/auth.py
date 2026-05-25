@@ -9,7 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=10)
 security = HTTPBearer()
 
 DEFAULT_SECRET = "aerolink-jwt-secret-key-change-in-production"
@@ -179,6 +179,20 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+async def hash_password_async(password: str) -> str:
+    """Run bcrypt in a thread pool so it doesn't block the event loop."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, pwd_context.hash, password)
+
+
+async def verify_password_async(plain: str, hashed: str) -> bool:
+    """Run bcrypt verification in a thread pool so it doesn't block the event loop."""
+    import asyncio
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, pwd_context.verify, plain, hashed)
 
 
 # ── Token creation (auth-service local dev only) ──────────────────────────────

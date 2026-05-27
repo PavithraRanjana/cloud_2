@@ -289,7 +289,7 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         VITE_COGNITO_DOMAIN: aerolink-auth.auth.us-east-1.amazoncognito.com
-        VITE_COGNITO_CLIENT_ID: 22ii1o5a3e0tj28q8m8rncern0
+        VITE_COGNITO_CLIENT_ID: 3159ln8opo1o813urck00kv9jc
     ports:
       - "80:80"
     depends_on:

@@ -95,7 +95,8 @@ async def gateway_proxy(request: Request, path: str):
             try:
                 token = auth_header.split(" ", 1)[1]
                 decode_token(token, secret=config.jwt_secret)
-            except Exception:
+            except Exception as e:
+                logger.warning("auth_failed", error=str(e), path=full_path)
                 raise HTTPException(status_code=401, detail="Invalid or expired token")
         else:
             raise HTTPException(status_code=401, detail="Missing authorization header")

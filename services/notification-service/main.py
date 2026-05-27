@@ -37,7 +37,7 @@ SessionFactory = create_session_factory(engine)
 
 # Sync engine for the background polling thread (avoids event-loop conflicts)
 _sync_db_url = config.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
-_sync_engine = create_engine(_sync_db_url)
+_sync_engine = create_engine(_sync_db_url, pool_pre_ping=True, pool_recycle=300)
 SyncSessionFactory = sessionmaker(bind=_sync_engine)
 
 # Redis for deduplication — prevents double-send when SQS redelivers a message

@@ -100,6 +100,7 @@ services:
       - REDIS_URL=redis://redis:6379/1
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
       - EVENT_BUS_NAME=aerolink-events
     depends_on:
@@ -129,6 +130,7 @@ services:
       - REDIS_URL=redis://redis:6379/2
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
       - EVENT_BUS_NAME=aerolink-events
     depends_on:
@@ -159,6 +161,7 @@ services:
       - REDIS_URL=redis://redis:6379/3
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
       - EVENT_BUS_NAME=aerolink-events
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
@@ -187,6 +190,7 @@ services:
       - REDIS_URL=redis://redis:6379/4
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
       - EVENT_BUS_NAME=aerolink-events
     depends_on:
@@ -214,6 +218,7 @@ services:
       - REDIS_URL=redis://redis:6379/5
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
       - EVENT_BUS_NAME=aerolink-events
       - S3_BUCKET=aerolink-documents
@@ -243,6 +248,7 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
     depends_on:
       postgres:
@@ -267,6 +273,7 @@ services:
       - REDIS_URL=redis://redis:6379/7
       - JWT_SECRET=${JWT_SECRET}
       - COGNITO_USER_POOL_ID=${COGNITO_USER_POOL_ID}
+      - COGNITO_CLIENT_ID=${COGNITO_CLIENT_ID}
       - AWS_REGION=us-east-1
       - ENABLE_SQS_POLLING=true
       - SES_SENDER_EMAIL=${SES_SENDER_EMAIL}

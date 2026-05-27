@@ -72,12 +72,6 @@ Parameters:
       - cache.t3.medium
       - cache.r6g.large
 
-  JWTSecret:
-    Type: String
-    NoEcho: true
-    MinLength: 16
-    Description: JWT signing secret shared across services
-
   ECSTaskCPU:
     Type: String
     Default: '256'
@@ -97,11 +91,13 @@ Parameters:
     Type: String
     Description: S3 bucket containing Lambda deployment packages (ZIP files)
 
-  InternalApiKey:
+  AppSecretsManagerArn:
     Type: String
-    NoEcho: true
-    MinLength: 16
-    Description: Shared secret used for service-to-service calls (e.g. loyalty/award)
+    Description: >-
+      ARN of a Secrets Manager secret containing app-level shared secrets as JSON.
+      Required keys: JWT_SECRET, INTERNAL_API_KEY. Created out-of-band so the CFN
+      template carries no plaintext secrets. Example:
+      arn:aws:secretsmanager:us-east-1:111111111111:secret:production/aerolink/app-XXXXXX
 
   GoogleClientId:
     Type: String
@@ -732,7 +728,9 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
-                Resource: !Ref StripeSecretsManagerArn
+                Resource:
+                  - !Ref AppSecretsManagerArn
+                  - !Ref StripeSecretsManagerArn
 
   # Least-privilege IAM roles — one per service group based on actual AWS SDK usage.
   # api-gateway and auth-service make no direct AWS SDK calls.
@@ -1376,8 +1374,6 @@ Resources:
               Value: http://passenger-service.aerolink.local:8007
             - Name: NOTIFICATION_SERVICE_URL
               Value: http://notification-service.aerolink.local:8008
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: COGNITO_USER_POOL_ID
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
@@ -1388,6 +1384,9 @@ Resources:
               Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com,https://${DomainName}'
             - Name: PARTNER_API_KEYS
               Value: ''
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1427,8 +1426,6 @@ Resources:
               Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/0'
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1437,6 +1434,9 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1476,8 +1476,6 @@ Resources:
               Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/1'
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1486,6 +1484,9 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1529,8 +1530,6 @@ Resources:
               Value: http://flight-service.aerolink.local:8002
             - Name: PAYMENT_SERVICE_URL
               Value: http://payment-service.aerolink.local:8004
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1539,6 +1538,9 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1582,10 +1584,6 @@ Resources:
               Value: http://booking-service.aerolink.local:8003
             - Name: PASSENGER_SERVICE_URL
               Value: http://passenger-service.aerolink.local:8007
-            - Name: INTERNAL_API_KEY
-              Value: !Ref InternalApiKey
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1595,6 +1593,10 @@ Resources:
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
           Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: INTERNAL_API_KEY
+              ValueFrom: !Sub '${AppSecretsManagerArn}:INTERNAL_API_KEY::'
             - Name: STRIPE_SECRET_KEY
               ValueFrom: !Sub '${StripeSecretsManagerArn}:STRIPE_SECRET_KEY::'
             - Name: STRIPE_PUBLISHABLE_KEY
@@ -1640,8 +1642,6 @@ Resources:
               Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/4'
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1650,6 +1650,9 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1695,8 +1698,6 @@ Resources:
               Value: http://flight-service.aerolink.local:8002
             - Name: S3_BUCKET
               Value: !Ref DocumentsBucket
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1705,6 +1706,9 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1748,10 +1752,6 @@ Resources:
               Value: http://booking-service.aerolink.local:8003
             - Name: NOTIFICATION_SERVICE_URL
               Value: http://notification-service.aerolink.local:8008
-            - Name: INTERNAL_API_KEY
-              Value: !Ref InternalApiKey
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1760,6 +1760,11 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: INTERNAL_API_KEY
+              ValueFrom: !Sub '${AppSecretsManagerArn}:INTERNAL_API_KEY::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1799,8 +1804,6 @@ Resources:
               Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/7'
-            - Name: JWT_SECRET
-              Value: !Ref JWTSecret
             - Name: AWS_REGION
               Value: !Ref 'AWS::Region'
             - Name: EVENT_BUS_NAME
@@ -1817,6 +1820,9 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
+            - Name: JWT_SECRET
+              ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:

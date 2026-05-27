@@ -527,7 +527,7 @@ Resources:
   PublicALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Internet-facing ALB for Global Accelerator — allows HTTPS inbound
+      GroupDescription: Internet-facing ALB for Global Accelerator - allows HTTPS inbound
       VpcId: !Ref VPC
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -834,8 +834,8 @@ Resources:
                   - s3:PutObject
                   - s3:ListBucket
                 Resource:
-                  - !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}'
-                  - !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}/*'
+                  - !GetAtt DocumentsBucket.Arn
+                  - !Sub '${DocumentsBucket.Arn}/*'
 
   # notification — SQS polling (main queue + DLQ)
   ECSNotificationTaskRole:
@@ -896,7 +896,7 @@ Resources:
                 Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}/*'
+                Resource: !Sub '${DocumentsBucket.Arn}/*'
               - Sid: CognitoGroups
                 Effect: Allow
                 Action:
@@ -927,7 +927,7 @@ Resources:
       LoadBalancerArn: !Ref ALB
       Port: 80
       Protocol: HTTP
-      DefaultAction:
+      DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref APIGatewayTargetGroup
 
@@ -979,6 +979,7 @@ Resources:
 
   PublicALBListenerHTTPS:
     Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasCert
     Properties:
       LoadBalancerArn: !Ref PublicALB
       Port: 443
@@ -996,11 +997,8 @@ Resources:
       Port: 80
       Protocol: HTTP
       DefaultActions:
-        - Type: redirect
-          RedirectConfig:
-            Protocol: HTTPS
-            Port: '443'
-            StatusCode: HTTP_301
+        - Type: forward
+          TargetGroupArn: !Ref PublicALBTargetGroup
 
   # ============================================================
   # RDS cross-region read replica (secondary deployment only)
@@ -1235,6 +1233,65 @@ Resources:
     Properties:
       ApiId: !Ref AeroLinkHttpApi
       RouteKey: 'GET /health'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  # Public auth routes (login/register/refresh/password-reset) — no JWT required
+  HttpApiAuthLoginRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'POST /api/v1/auth/login'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  HttpApiAuthRegisterRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'POST /api/v1/auth/register'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  HttpApiAuthRefreshRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'POST /api/v1/auth/refresh'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  HttpApiAuthForgotPasswordRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'POST /api/v1/auth/forgot-password'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  HttpApiAuthResetPasswordRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'POST /api/v1/auth/reset-password'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  # Stripe webhook — public (Stripe signs requests, payment-service verifies signature)
+  HttpApiStripeWebhookRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'POST /api/v1/payments/stripe/webhook'
+      Target: !Sub 'integrations/${HttpApiIntegration}'
+      AuthorizationType: NONE
+
+  # Public flight search — passengers can search without logging in
+  HttpApiFlightsSearchRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref AeroLinkHttpApi
+      RouteKey: 'GET /api/v1/flights'
       Target: !Sub 'integrations/${HttpApiIntegration}'
       AuthorizationType: NONE
 
@@ -2266,7 +2323,7 @@ Resources:
               - TransitionInDays: 90
                 StorageClass: STANDARD_IA
       ReplicationConfiguration: !If
-        - IsPrimary
+        - HasSecondaryALB
         - Role: !GetAtt S3ReplicationRole.Arn
           Rules:
             - Id: ReplicateAllToSecondary
@@ -2346,9 +2403,6 @@ Resources:
                   except client.exceptions.ResourceNotFoundException:
                       pass  # group not yet created during stack bootstrap
               return event
-      Environment:
-        Variables:
-          AWS_DEFAULT_REGION: !Ref 'AWS::Region'
 
   CognitoPostConfirmationPermission:
     Type: AWS::Lambda::Permission
@@ -2709,7 +2763,7 @@ Resources:
   # IAM role that S3 uses to replicate objects to the secondary region
   S3ReplicationRole:
     Type: AWS::IAM::Role
-    Condition: IsPrimary
+    Condition: HasSecondaryALB
     Properties:
       RoleName: !Sub '${EnvironmentName}-s3-replication-role'
       AssumeRolePolicyDocument:
@@ -2728,13 +2782,13 @@ Resources:
                 Action:
                   - s3:GetReplicationConfiguration
                   - s3:ListBucket
-                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}'
+                Resource: !GetAtt DocumentsBucket.Arn
               - Effect: Allow
                 Action:
                   - s3:GetObjectVersionForReplication
                   - s3:GetObjectVersionAcl
                   - s3:GetObjectVersionTagging
-                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}/*'
+                Resource: !Sub '${DocumentsBucket.Arn}/*'
               - Effect: Allow
                 Action:
                   - s3:ReplicateObject
@@ -2819,12 +2873,11 @@ Resources:
           - HasDomain
           - - !Ref DomainName
           - !Ref AWS::NoValue
-        ViewerCertificate: !If
-          - HasCert
-          - AcmCertificateArn: !Ref CertificateArn
-            SslSupportMethod: sni-only
-            MinimumProtocolVersion: TLSv1.2_2021
-          - CloudFrontDefaultCertificate: true
+        ViewerCertificate:
+          AcmCertificateArn: !If [HasCert, !Ref CertificateArn, !Ref AWS::NoValue]
+          SslSupportMethod: !If [HasCert, sni-only, !Ref AWS::NoValue]
+          MinimumProtocolVersion: !If [HasCert, TLSv1.2_2021, !Ref AWS::NoValue]
+          CloudFrontDefaultCertificate: !If [HasCert, !Ref AWS::NoValue, true]
         DefaultRootObject: index.html
         Origins:
           # Origin 1: S3 frontend SPA
@@ -2878,7 +2931,7 @@ Resources:
   # ============================================================
   GlobalAccelerator:
     Type: AWS::GlobalAccelerator::Accelerator
-    Condition: IsPrimary
+    Condition: HasSecondaryALB
     Properties:
       Name: !Sub '${EnvironmentName}-aerolink-ga'
       Enabled: true
@@ -2889,7 +2942,7 @@ Resources:
 
   GlobalAcceleratorListener:
     Type: AWS::GlobalAccelerator::Listener
-    Condition: IsPrimary
+    Condition: HasSecondaryALB
     Properties:
       AcceleratorArn: !Ref GlobalAccelerator
       Protocol: TCP
@@ -2903,24 +2956,19 @@ Resources:
   # Add SecondaryALBArn parameter after secondary stack is deployed to add the second endpoint
   GlobalAcceleratorEndpointGroup:
     Type: AWS::GlobalAccelerator::EndpointGroup
-    Condition: IsPrimary
+    Condition: HasSecondaryALB
     Properties:
       ListenerArn: !Ref GlobalAcceleratorListener
       EndpointGroupRegion: !Ref PrimaryRegion
       TrafficDialPercentage: 100
-      HealthCheckProtocol: HTTPS
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: 80
       HealthCheckPath: /health
       HealthCheckIntervalSeconds: 10
       ThresholdCount: 3
       EndpointConfigurations:
-        - !If
-          - HasSecondaryALB
-          - EndpointId: !Ref SecondaryALBArn
-            Weight: 50
-            ClientIPPreservationEnabled: true
-          - !Ref AWS::NoValue
         - EndpointId: !GetAtt PublicALB.LoadBalancerArn
-          Weight: 50
+          Weight: 100
           ClientIPPreservationEnabled: true
 
   # ============================================================
@@ -3003,12 +3051,12 @@ Resources:
               Limit: 5000       # higher ceiling for x-api-key holders (~1000 req/min)
               AggregateKeyType: IP
               ScopeDownStatement:
-                ByteMatchStatement:
+                SizeConstraintStatement:
                   FieldToMatch:
                     SingleHeader:
                       Name: x-api-key
-                  PositionalConstraint: EXISTS
-                  SearchString: ''
+                  ComparisonOperator: GE
+                  Size: 1
                   TextTransformations:
                     - Priority: 0
                       Type: NONE
@@ -3017,12 +3065,8 @@ Resources:
             CloudWatchMetricsEnabled: true
             MetricName: !Sub '${EnvironmentName}RateLimitPartnerApiKey'
 
-  WafWebAclAssociation:
-    Type: AWS::WAFv2::WebACLAssociation
-    DependsOn: HttpApiDefaultStage
-    Properties:
-      ResourceArn: !Sub 'arn:aws:apigateway:${AWS::Region}::/apis/${AeroLinkHttpApi}/stages/$default'
-      WebACLArn: !GetAtt WafWebAcl.Arn
+  # WafWebAclAssociation is done post-deploy via CLI (WAF acl ARN → API GW stage ARN)
+  # aws wafv2 associate-web-acl --web-acl-arn <WafArn> --resource-arn <ApiStageArn> --region us-east-1
 
 # ============================================================
 # Outputs
@@ -3139,7 +3183,7 @@ Outputs:
       Name: !Sub '${EnvironmentName}-CloudFrontDomain'
 
   GlobalAcceleratorDNS:
-    Condition: IsPrimary
+    Condition: HasSecondaryALB
     Description: Global Accelerator anycast DNS name — use as CNAME or Route 53 alias target
     Value: !GetAtt GlobalAccelerator.DnsName
     Export:

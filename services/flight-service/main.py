@@ -42,7 +42,12 @@ except Exception:
 # CQRS Read Model: Redis cache for flight search queries
 redis_client = None
 try:
-    redis_client = redis.Redis.from_url(config.redis_url, decode_responses=True)
+    redis_client = redis.Redis.from_url(
+        config.redis_url,
+        decode_responses=True,
+        socket_connect_timeout=2,
+        socket_timeout=2,
+    )
     redis_client.ping()
     logger.info("redis_connected", url=config.redis_url)
 except Exception as e:

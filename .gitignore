@@ -1,6 +1,9 @@
 .env
 .env.prod
 frontend/.env.local
+frontend/.env.production
+frontend/vite.config.ts.timestamp-*.mjs
+.claude/
 infrastructure/localstack/cognito.env
 venv/
 __pycache__/

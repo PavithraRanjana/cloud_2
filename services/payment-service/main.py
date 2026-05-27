@@ -304,38 +304,40 @@ async def _handle_payment_succeeded(intent: dict, db: AsyncSession, request: Req
     if not payment:
         logger.warning("webhook_intent_unknown", intent_id=pi_id)
         return
-    if payment.status == PaymentStatus.COMPLETED:
-        return  # already processed; webhooks are at-least-once
+    already_completed = payment.status == PaymentStatus.COMPLETED
 
-    await _mark_completed(payment, intent, db)
+    if not already_completed:
+        await _mark_completed(payment, intent, db)
 
-    client_ip = request.client.host if request.client else None
-    await record_audit(db, "payment-service", "payment.completed", "payment",
-                       resource_id=str(payment.id), actor_id=str(payment.user_id),
-                       detail=f"TXN: {payment.transaction_ref}, "
-                              f"method: {payment.payment_method_type}",
-                       ip_address=client_ip)
+        client_ip = request.client.host if request.client else None
+        await record_audit(db, "payment-service", "payment.completed", "payment",
+                           resource_id=str(payment.id), actor_id=str(payment.user_id),
+                           detail=f"TXN: {payment.transaction_ref}, "
+                                  f"method: {payment.payment_method_type}",
+                           ip_address=client_ip)
 
     booking_id = str(payment.booking_id)
 
-    # Update booking status (saga — breaker + retry)
-    try:
-        await breaker_call_async(
-            booking_breaker, _update_booking_status, booking_id,
-            {"status": "paid", "payment_id": str(payment.id)},
-        )
-    except pybreaker.CircuitBreakerError:
-        logger.warning("booking_status_update_skipped_circuit_open", booking_id=booking_id)
-    except Exception as e:
-        logger.warning("booking_status_update_failed", booking_id=booking_id, error=str(e))
+    if not already_completed:
+        # Update booking status (saga — breaker + retry)
+        try:
+            await breaker_call_async(
+                booking_breaker, _update_booking_status, booking_id,
+                {"status": "paid", "payment_id": str(payment.id)},
+            )
+        except pybreaker.CircuitBreakerError:
+            logger.warning("booking_status_update_skipped_circuit_open", booking_id=booking_id)
+        except Exception as e:
+            logger.warning("booking_status_update_failed", booking_id=booking_id, error=str(e))
 
-    # Award loyalty points
+    # Award loyalty points (skipped on replay — already awarded)
     loyalty_points = max(1, int(payment.amount * 10))
-    try:
-        await breaker_call_async(passenger_breaker, _award_loyalty,
-                                 str(payment.user_id), loyalty_points)
-    except Exception as e:
-        logger.warning("loyalty_award_failed", user_id=str(payment.user_id), error=str(e))
+    if not already_completed:
+        try:
+            await breaker_call_async(passenger_breaker, _award_loyalty,
+                                     str(payment.user_id), loyalty_points)
+        except Exception as e:
+            logger.warning("loyalty_award_failed", user_id=str(payment.user_id), error=str(e))
 
     # Fetch booking for accurate event payload (best-effort)
     booking_reference = booking_id

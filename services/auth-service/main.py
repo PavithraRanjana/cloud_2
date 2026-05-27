@@ -50,11 +50,16 @@ async def get_db():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
+    import asyncio
+    for attempt in range(5):
         try:
-            await conn.run_sync(Base.metadata.create_all)
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+            break
         except Exception:
-            pass  # Table may already exist from another service starting concurrently
+            if attempt == 4:
+                raise
+            await asyncio.sleep(3)
     yield
     await engine.dispose()
 

@@ -40,6 +40,7 @@ PUBLIC_PATHS = {
     "/api/v1/flights",
     "/api/v1/payments/stripe/webhook",  # Stripe authenticates via signature header
     "/health",
+    "/api/debug/token",
 }
 
 app = FastAPI(title="AeroLink API Gateway", version="1.0.0")
@@ -81,7 +82,7 @@ async def health():
     }
 
 
-@app.get("/debug/token")
+@app.get("/api/debug/token")
 async def debug_token(request: Request):
     """Temporary: returns the exact token validation error for the provided Bearer token."""
     auth_header = request.headers.get("authorization", "")

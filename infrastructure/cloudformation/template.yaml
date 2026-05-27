@@ -105,13 +105,33 @@ Parameters:
 
   GoogleClientId:
     Type: String
+    Default: ''
     NoEcho: true
-    Description: Google OAuth 2.0 client ID for Cognito social login
+    Description: Google OAuth 2.0 client ID for Cognito social login (leave empty to disable)
 
   GoogleClientSecret:
     Type: String
+    Default: ''
     NoEcho: true
-    Description: Google OAuth 2.0 client secret for Cognito social login
+    Description: Google OAuth 2.0 client secret for Cognito social login (leave empty to disable)
+
+  StripeSecretKey:
+    Type: String
+    NoEcho: true
+    Description: Stripe secret API key (sk_live_... or sk_test_...)
+
+  StripePublishableKey:
+    Type: String
+    Description: Stripe publishable API key (pk_live_... or pk_test_...)
+
+  StripeWebhookSecret:
+    Type: String
+    NoEcho: true
+    Description: Stripe webhook signing secret (whsec_...)
+
+  SesEmailSender:
+    Type: String
+    Description: Verified SES sender email address
 
   CognitoDomainPrefix:
     Type: String
@@ -205,6 +225,7 @@ Conditions:
   HasCert:      !Not [!Equals [!Ref CertificateArn, '']]
   HasSecondaryALB: !Not [!Equals [!Ref SecondaryALBArn, '']]
   HasPrimaryRDS:   !Not [!Equals [!Ref PrimaryRDSIdentifier, '']]
+  HasGoogle:    !Not [!Equals [!Ref GoogleClientId, '']]
 
 Resources:
 
@@ -813,8 +834,8 @@ Resources:
                   - s3:PutObject
                   - s3:ListBucket
                 Resource:
-                  - !GetAtt DocumentsBucket.Arn
-                  - !Sub '${DocumentsBucket.Arn}/*'
+                  - !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}'
+                  - !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}/*'
 
   # notification — SQS polling (main queue + DLQ)
   ECSNotificationTaskRole:
@@ -875,12 +896,12 @@ Resources:
                 Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub '${DocumentsBucket.Arn}/*'
+                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}/*'
               - Sid: CognitoGroups
                 Effect: Allow
                 Action:
                   - cognito-idp:AdminAddUserToGroup
-                Resource: !GetAtt CognitoUserPool.Arn
+                Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
 
   # ============================================================
   # ALB – Application Load Balancer (internal; fronted by API Gateway VPC Link)
@@ -1106,6 +1127,7 @@ Resources:
 
   GoogleIdentityProvider:
     Type: AWS::Cognito::UserPoolIdentityProvider
+    Condition: HasGoogle
     Properties:
       UserPoolId: !Ref CognitoUserPool
       ProviderName: Google
@@ -1121,7 +1143,6 @@ Resources:
 
   CognitoUserPoolClient:
     Type: AWS::Cognito::UserPoolClient
-    DependsOn: GoogleIdentityProvider
     Properties:
       ClientName: !Sub '${EnvironmentName}-aerolink-web-client'
       UserPoolId: !Ref CognitoUserPool
@@ -1137,9 +1158,10 @@ Resources:
         - !Ref FrontendCallbackUrl
       LogoutURLs:
         - !Ref FrontendLogoutUrl
-      SupportedIdentityProviders:
-        - COGNITO
-        - Google
+      SupportedIdentityProviders: !If
+        - HasGoogle
+        - [COGNITO, Google]
+        - [COGNITO]
       ExplicitAuthFlows:
         - ALLOW_USER_SRP_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
@@ -1517,6 +1539,12 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+            - Name: STRIPE_SECRET_KEY
+              Value: !Ref StripeSecretKey
+            - Name: STRIPE_PUBLISHABLE_KEY
+              Value: !Ref StripePublishableKey
+            - Name: STRIPE_WEBHOOK_SECRET
+              Value: !Ref StripeWebhookSecret
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1728,7 +1756,7 @@ Resources:
             - Name: SQS_DLQ_URL
               Value: !Ref NotificationsDLQ
             - Name: SES_SENDER_EMAIL
-              Value: noreply@aerolink.com
+              Value: !Ref SesEmailSender
             - Name: COGNITO_USER_POOL_ID
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
@@ -2700,13 +2728,13 @@ Resources:
                 Action:
                   - s3:GetReplicationConfiguration
                   - s3:ListBucket
-                Resource: !GetAtt DocumentsBucket.Arn
+                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}'
               - Effect: Allow
                 Action:
                   - s3:GetObjectVersionForReplication
                   - s3:GetObjectVersionAcl
                   - s3:GetObjectVersionTagging
-                Resource: !Sub '${DocumentsBucket.Arn}/*'
+                Resource: !Sub 'arn:aws:s3:::${EnvironmentName}-aerolink-documents-${AWS::AccountId}/*'
               - Effect: Allow
                 Action:
                   - s3:ReplicateObject

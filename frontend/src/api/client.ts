@@ -40,7 +40,13 @@ const _bodyCache = new WeakMap<Request, ArrayBuffer>();
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
     const token = localStorage.getItem('id_token');
-    if (token) request.headers.set('Authorization', `Bearer ${token}`);
+    if (!token) {
+      // No token at all — fire session-expired immediately instead of
+      // letting the request fail with 401 and then discovering no refresh token either.
+      window.dispatchEvent(new CustomEvent('auth:session-expired'));
+      return request;
+    }
+    request.headers.set('Authorization', `Bearer ${token}`);
 
     // Cache body bytes for POST/PUT/PATCH so onResponse can retry.
     if (request.body && !_bodyCache.has(request)) {

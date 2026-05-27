@@ -78,6 +78,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [clearAuth]);
 
+  // Redirect to login when the API client detects an unrecoverable 401
+  useEffect(() => {
+    function handleSessionExpired() {
+      clearAuth();
+      window.location.href = '/login';
+    }
+    window.addEventListener('auth:session-expired', handleSessionExpired);
+    return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
+  }, [clearAuth]);
+
   // Hydrate from localStorage on mount, refresh if expired
   useEffect(() => {
     const stored = localStorage.getItem('id_token');

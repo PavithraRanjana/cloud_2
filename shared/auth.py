@@ -107,6 +107,7 @@ def _verify_cognito_token(token: str) -> dict:
             algorithms=[alg],
             audience=_COGNITO_CLIENT_ID,
             issuer=expected_issuer,
+            options={"verify_at_hash": False},
         )
     except JWTError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,

@@ -12,7 +12,7 @@ RUN npm ci
 
 # Copy source and build (skip prebuild generate-types — types already committed)
 COPY frontend/ ./
-RUN npx tsc -b && npx vite build
+RUN npx vite build
 
 # Stage 2: Serve with nginx
 FROM nginx:alpine

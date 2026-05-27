@@ -9,7 +9,7 @@ import {
 import {
   IS_HOSTED_UI,
   buildLogoutUrl,
-  refreshCognitoToken,
+  refreshToken,
   decodeJwt,
   redirectToLogin,
 } from '../lib/cognito';
@@ -98,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const rt = localStorage.getItem('refresh_token');
       if (!rt) { clearAuth(); setIsLoading(false); return; }
 
-      refreshCognitoToken(rt)
+      refreshToken(rt)
         .then(({ id_token }) => {
           localStorage.setItem('id_token', id_token);
           setToken(id_token);

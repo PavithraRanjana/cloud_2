@@ -15,7 +15,7 @@ import type { paths as BaggagePaths } from '../types/baggage';
 import type { paths as CheckinPaths } from '../types/checkin';
 import type { paths as PassengerPaths } from '../types/passenger';
 import type { paths as NotificationPaths } from '../types/notification';
-import { refreshCognitoToken } from '../lib/cognito';
+import { refreshToken } from '../lib/cognito';
 
 const BASE = '';
 
@@ -26,7 +26,7 @@ async function refreshIdToken(): Promise<string | null> {
   const rt = localStorage.getItem('refresh_token');
   if (!rt) return null;
   try {
-    const { id_token } = await refreshCognitoToken(rt);
+    const { id_token } = await refreshToken(rt);
     localStorage.setItem('id_token', id_token);
     return id_token;
   } catch {

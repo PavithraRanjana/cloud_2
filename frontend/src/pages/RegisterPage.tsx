@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { IS_HOSTED_UI, redirectToSignUp, localDevSignUp } from '../lib/cognito';
+import { IS_HOSTED_UI, redirectToSignUp } from '../lib/cognito';
 
 export function RegisterPage() {
   const navigate = useNavigate();
@@ -41,7 +41,15 @@ export function RegisterPage() {
     }
     setLoading(true);
     try {
-      await localDevSignUp(username, email, password);
+      const resp = await fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username, password, full_name: username }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? 'Sign up failed.');
+      }
       navigate('/login', { state: { registered: true } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign up failed.');

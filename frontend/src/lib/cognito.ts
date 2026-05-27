@@ -123,6 +123,26 @@ export async function exchangeCodeForTokens(code: string, state: string): Promis
   return resp.json();
 }
 
+/**
+ * Refresh the token using whichever backend is active.
+ * - IS_HOSTED_UI: Cognito OAuth2 token endpoint
+ * - Backend JWT mode: AeroLink auth-service /api/v1/auth/refresh
+ */
+export async function refreshToken(
+  rt: string,
+): Promise<{ id_token: string; access_token: string }> {
+  if (IS_HOSTED_UI) return refreshCognitoToken(rt);
+
+  const resp = await fetch('/api/v1/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: rt }),
+  });
+  if (!resp.ok) throw new Error('Token refresh failed');
+  const data = await resp.json() as { access_token: string };
+  return { id_token: data.access_token, access_token: data.access_token };
+}
+
 /** Refresh the Cognito ID token using a refresh token. */
 export async function refreshCognitoToken(
   refreshToken: string,

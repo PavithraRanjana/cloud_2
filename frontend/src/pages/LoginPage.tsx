@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { IS_HOSTED_UI, localDevLogin, redirectToSignUp } from '../lib/cognito';
+import { IS_HOSTED_UI, redirectToSignUp } from '../lib/cognito';
 
 export function LoginPage() {
   const { loginWithCognito, setTokens } = useAuth();
@@ -15,14 +15,22 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Local dev: submit directly to LocalStack Cognito
   async function handleLocalSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const { id_token, refresh_token } = await localDevLogin(username, password);
-      setTokens(id_token, refresh_token);
+      const resp = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as { detail?: string };
+        throw new Error(err.detail ?? 'Invalid username or password.');
+      }
+      const { access_token, refresh_token } = await resp.json() as { access_token: string; refresh_token: string };
+      setTokens(access_token, refresh_token);
       navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Invalid username or password.');
@@ -36,7 +44,7 @@ export function LoginPage() {
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
         <h1 className="mb-1 text-2xl font-bold text-gray-900">AeroLink</h1>
         <p className="mb-6 text-sm text-gray-500">
-          {IS_HOSTED_UI ? 'Sign in to continue' : 'Local dev — sign in via LocalStack'}
+          {IS_HOSTED_UI ? 'Sign in to continue' : 'Sign in to your account'}
         </p>
 
         {justRegistered && (
@@ -98,7 +106,7 @@ export function LoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="test-passenger"
+                placeholder="your-username"
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
@@ -120,9 +128,6 @@ export function LoginPage() {
             >
               {loading ? 'Signing in…' : 'Sign in'}
             </button>
-            <p className="text-center text-xs text-gray-400">
-              Test users: test-passenger / test-admin (pw: Test1234!)
-            </p>
             <p className="text-center text-sm text-gray-500">
               Don't have an account?{' '}
               <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">

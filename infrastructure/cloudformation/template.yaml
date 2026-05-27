@@ -115,19 +115,14 @@ Parameters:
     NoEcho: true
     Description: Google OAuth 2.0 client secret for Cognito social login (leave empty to disable)
 
-  StripeSecretKey:
+  StripeSecretsManagerArn:
     Type: String
-    NoEcho: true
-    Description: Stripe secret API key (sk_live_... or sk_test_...)
-
-  StripePublishableKey:
-    Type: String
-    Description: Stripe publishable API key (pk_live_... or pk_test_...)
-
-  StripeWebhookSecret:
-    Type: String
-    NoEcho: true
-    Description: Stripe webhook signing secret (whsec_...)
+    Description: >-
+      ARN of a Secrets Manager secret containing the Stripe credentials as a JSON
+      document with keys STRIPE_SECRET_KEY, STRIPE_PUBLISHABLE_KEY, and
+      STRIPE_WEBHOOK_SECRET. Created out-of-band so the CFN parameter values do
+      not have to carry plaintext Stripe keys. Example:
+      arn:aws:secretsmanager:us-east-1:111111111111:secret:production/aerolink/stripe-XXXXXX
 
   SesEmailSender:
     Type: String
@@ -735,6 +730,9 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                 Resource: '*'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref StripeSecretsManagerArn
 
   # Least-privilege IAM roles — one per service group based on actual AWS SDK usage.
   # api-gateway and auth-service make no direct AWS SDK calls.
@@ -1596,12 +1594,13 @@ Resources:
               Value: !Ref CognitoUserPool
             - Name: COGNITO_CLIENT_ID
               Value: !Ref CognitoUserPoolClient
+          Secrets:
             - Name: STRIPE_SECRET_KEY
-              Value: !Ref StripeSecretKey
+              ValueFrom: !Sub '${StripeSecretsManagerArn}:STRIPE_SECRET_KEY::'
             - Name: STRIPE_PUBLISHABLE_KEY
-              Value: !Ref StripePublishableKey
+              ValueFrom: !Sub '${StripeSecretsManagerArn}:STRIPE_PUBLISHABLE_KEY::'
             - Name: STRIPE_WEBHOOK_SECRET
-              Value: !Ref StripeWebhookSecret
+              ValueFrom: !Sub '${StripeSecretsManagerArn}:STRIPE_WEBHOOK_SECRET::'
           LogConfiguration:
             LogDriver: awslogs
             Options:

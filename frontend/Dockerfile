@@ -1,5 +1,12 @@
 # Stage 1: Build React app
 FROM node:20-alpine AS builder
+
+# Cognito / Hosted UI env vars — baked into the JS bundle at build time
+ARG VITE_COGNITO_DOMAIN
+ARG VITE_COGNITO_CLIENT_ID
+ENV VITE_COGNITO_DOMAIN=$VITE_COGNITO_DOMAIN
+ENV VITE_COGNITO_CLIENT_ID=$VITE_COGNITO_CLIENT_ID
+
 WORKDIR /app
 
 # Copy OpenAPI specs so generate-types can fall back to local files

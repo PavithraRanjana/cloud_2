@@ -34,10 +34,23 @@ async function refreshIdToken(): Promise<string | null> {
   }
 }
 
+// Clone body bytes before the request is sent so we can retry after a 401.
+const _bodyCache = new WeakMap<Request, ArrayBuffer>();
+
 const authMiddleware: Middleware = {
   async onRequest({ request }) {
     const token = localStorage.getItem('id_token');
     if (token) request.headers.set('Authorization', `Bearer ${token}`);
+
+    // Cache body bytes for POST/PUT/PATCH so onResponse can retry.
+    if (request.body && !_bodyCache.has(request)) {
+      try {
+        const cloned = request.clone();
+        const bytes = await cloned.arrayBuffer();
+        _bodyCache.set(request, bytes);
+      } catch { /* non-critical */ }
+    }
+
     return request;
   },
 
@@ -67,7 +80,15 @@ const authMiddleware: Middleware = {
       return response;
     }
 
-    const retried = new Request(request);
+    // Rebuild the request with the refreshed token, restoring the body if needed.
+    const cachedBody = _bodyCache.get(request);
+    const retried = new Request(request.url, {
+      method: request.method,
+      headers: new Headers(request.headers),
+      body: cachedBody ?? null,
+      credentials: request.credentials,
+      mode: request.mode,
+    });
     retried.headers.set('Authorization', `Bearer ${newToken}`);
     return fetch(retried);
   },

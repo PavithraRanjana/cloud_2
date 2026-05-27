@@ -81,6 +81,20 @@ async def health():
     }
 
 
+@app.get("/debug/token")
+async def debug_token(request: Request):
+    """Temporary: returns the exact token validation error for the provided Bearer token."""
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return {"error": "No Bearer token provided"}
+    token = auth_header.split(" ", 1)[1]
+    try:
+        user = decode_token(token, secret=config.jwt_secret)
+        return {"valid": True, "user": user}
+    except Exception as e:
+        return {"valid": False, "error": str(e), "error_type": type(e).__name__}
+
+
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
 async def gateway_proxy(request: Request, path: str):
     full_path = f"/{path}"

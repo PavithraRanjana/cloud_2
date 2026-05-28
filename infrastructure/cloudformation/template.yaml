@@ -575,9 +575,26 @@ Resources:
       DeletionProtection: true
       PubliclyAccessible: false
       CopyTagsToSnapshot: true
+      EnablePerformanceInsights: true
+      PerformanceInsightsRetentionPeriod: 31
+      MonitoringInterval: 60
+      MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
       Tags:
         - Key: Name
           Value: !Sub '${EnvironmentName}-aerolink-db'
+
+  RDSMonitoringRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: monitoring.rds.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
 
   # ============================================================
   # ElastiCache Redis 7

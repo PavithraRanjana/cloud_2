@@ -3145,6 +3145,200 @@ Resources:
   # WafWebAclAssociation is done post-deploy via CLI (WAF acl ARN → API GW stage ARN)
   # aws wafv2 associate-web-acl --web-acl-arn <WafArn> --resource-arn <ApiStageArn> --region us-east-1
 
+  # ============================================================
+  # CloudWatch Dashboard — single-pane production overview
+  # ============================================================
+  ProductionDashboard:
+    Type: AWS::CloudWatch::Dashboard
+    Properties:
+      DashboardName: !Sub '${EnvironmentName}-aerolink'
+      DashboardBody: !Sub |
+        {
+          "widgets": [
+            {
+              "type": "text",
+              "x": 0, "y": 0, "width": 24, "height": 1,
+              "properties": {"markdown": "# AeroLink ${EnvironmentName} Overview"}
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "title": "API Gateway — Requests & Errors",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ApiGateway", "Count", "ApiId", "${AeroLinkHttpApi}", "Stage", "$default", {"label": "Total requests"}],
+                  [".", "4xx", ".", ".", ".", ".", {"label": "4xx", "yAxis": "right"}],
+                  [".", "5xx", ".", ".", ".", ".", {"label": "5xx", "yAxis": "right"}]
+                ],
+                "period": 60, "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 1, "width": 12, "height": 6,
+              "properties": {
+                "title": "API Gateway — Latency",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ApiGateway", "Latency", "ApiId", "${AeroLinkHttpApi}", "Stage", "$default", {"stat": "p50", "label": "p50"}],
+                  ["...", {"stat": "p95", "label": "p95"}],
+                  ["...", {"stat": "p99", "label": "p99"}]
+                ],
+                "period": 60
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "title": "ECS — CPU Utilization (per service)",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ECS", "CPUUtilization", "ClusterName", "${ECSCluster}", "ServiceName", "api-gateway"],
+                  ["...", "auth-service"], ["...", "flight-service"], ["...", "booking-service"],
+                  ["...", "payment-service"], ["...", "baggage-service"], ["...", "checkin-service"],
+                  ["...", "passenger-service"], ["...", "notification-service"]
+                ],
+                "period": 60, "stat": "Average", "yAxis": {"left": {"max": 100}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 7, "width": 12, "height": 6,
+              "properties": {
+                "title": "ECS — Memory Utilization (per service)",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ECS", "MemoryUtilization", "ClusterName", "${ECSCluster}", "ServiceName", "api-gateway"],
+                  ["...", "auth-service"], ["...", "flight-service"], ["...", "booking-service"],
+                  ["...", "payment-service"], ["...", "baggage-service"], ["...", "checkin-service"],
+                  ["...", "passenger-service"], ["...", "notification-service"]
+                ],
+                "period": 60, "stat": "Average", "yAxis": {"left": {"max": 100}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 13, "width": 12, "height": 6,
+              "properties": {
+                "title": "ECS — Running Task Count",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", "${ECSCluster}", "ServiceName", "api-gateway"],
+                  ["...", "auth-service"], ["...", "flight-service"], ["...", "booking-service"],
+                  ["...", "payment-service"], ["...", "baggage-service"], ["...", "checkin-service"],
+                  ["...", "passenger-service"], ["...", "notification-service"]
+                ],
+                "period": 60, "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 13, "width": 12, "height": 6,
+              "properties": {
+                "title": "ALB — Healthy Targets, 5xx, Latency",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ApplicationELB", "HealthyHostCount", "TargetGroup", "${APIGatewayTargetGroup.TargetGroupFullName}", "LoadBalancer", "${ALB.LoadBalancerFullName}", {"label": "Healthy targets"}],
+                  ["AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", "LoadBalancer", "${ALB.LoadBalancerFullName}", {"label": "5xx", "yAxis": "right", "stat": "Sum"}],
+                  ["AWS/ApplicationELB", "TargetResponseTime", "LoadBalancer", "${ALB.LoadBalancerFullName}", {"label": "p99 latency (s)", "yAxis": "right", "stat": "p99"}]
+                ],
+                "period": 60, "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 19, "width": 12, "height": 6,
+              "properties": {
+                "title": "RDS — CPU & Connections",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", "${DBInstance}", {"label": "CPU %"}],
+                  [".", "DatabaseConnections", ".", ".", {"label": "Connections", "yAxis": "right"}]
+                ],
+                "period": 60, "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 19, "width": 12, "height": 6,
+              "properties": {
+                "title": "RDS — Read / Write Latency",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/RDS", "ReadLatency", "DBInstanceIdentifier", "${DBInstance}", {"label": "Read"}],
+                  [".", "WriteLatency", ".", ".", {"label": "Write"}]
+                ],
+                "period": 60, "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 25, "width": 12, "height": 6,
+              "properties": {
+                "title": "Redis — CPU & Memory",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/ElastiCache", "EngineCPUUtilization", "CacheClusterId", "${RedisReplicationGroup}-001", {"label": "Node 1 CPU %"}],
+                  ["...", "${RedisReplicationGroup}-002", {"label": "Node 2 CPU %"}],
+                  ["AWS/ElastiCache", "DatabaseMemoryUsagePercentage", "CacheClusterId", "${RedisReplicationGroup}-001", {"label": "Node 1 Memory %", "yAxis": "right"}],
+                  ["...", "${RedisReplicationGroup}-002", {"label": "Node 2 Memory %", "yAxis": "right"}]
+                ],
+                "period": 60, "stat": "Average", "yAxis": {"left": {"max": 100}, "right": {"max": 100}}
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 25, "width": 12, "height": 6,
+              "properties": {
+                "title": "SQS — Notifications Queue Depth & Age",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/SQS", "ApproximateNumberOfMessagesVisible", "QueueName", "${NotificationsQueue.QueueName}", {"label": "Main queue depth"}],
+                  ["...", "${NotificationsDLQ.QueueName}", {"label": "DLQ depth"}],
+                  ["AWS/SQS", "ApproximateAgeOfOldestMessage", "QueueName", "${NotificationsQueue.QueueName}", {"label": "Oldest msg age (s)", "yAxis": "right"}]
+                ],
+                "period": 60, "stat": "Average"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 0, "y": 31, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda — Invocations & Errors",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/Lambda", "Invocations", "FunctionName", "${NotificationDispatchFunction}"],
+                  ["...", "${BoardingPassGeneratorFunction}"],
+                  ["...", "${PricingRecalculationFunction}"],
+                  ["AWS/Lambda", "Errors", "FunctionName", "${NotificationDispatchFunction}", {"yAxis": "right", "color": "#d62728"}],
+                  ["...", "${BoardingPassGeneratorFunction}", {"yAxis": "right", "color": "#d62728"}],
+                  ["...", "${PricingRecalculationFunction}", {"yAxis": "right", "color": "#d62728"}]
+                ],
+                "period": 60, "stat": "Sum"
+              }
+            },
+            {
+              "type": "metric",
+              "x": 12, "y": 31, "width": 12, "height": 6,
+              "properties": {
+                "title": "Lambda — Duration (avg + p99)",
+                "view": "timeSeries", "region": "${AWS::Region}",
+                "metrics": [
+                  ["AWS/Lambda", "Duration", "FunctionName", "${NotificationDispatchFunction}", {"stat": "Average"}],
+                  ["...", "${BoardingPassGeneratorFunction}", {"stat": "Average"}],
+                  ["...", "${PricingRecalculationFunction}", {"stat": "Average"}],
+                  ["AWS/Lambda", "Duration", "FunctionName", "${NotificationDispatchFunction}", {"stat": "p99", "yAxis": "right"}],
+                  ["...", "${BoardingPassGeneratorFunction}", {"stat": "p99", "yAxis": "right"}],
+                  ["...", "${PricingRecalculationFunction}", {"stat": "p99", "yAxis": "right"}]
+                ],
+                "period": 60
+              }
+            }
+          ]
+        }
+
 # ============================================================
 # Outputs
 # ============================================================

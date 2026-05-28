@@ -585,7 +585,8 @@ Resources:
       PubliclyAccessible: false
       CopyTagsToSnapshot: true
       EnablePerformanceInsights: true
-      PerformanceInsightsRetentionPeriod: 31
+      PerformanceInsightsRetentionPeriod: 465
+      DatabaseInsightsMode: advanced
       MonitoringInterval: 60
       MonitoringRoleArn: !GetAtt RDSMonitoringRole.Arn
       Tags:

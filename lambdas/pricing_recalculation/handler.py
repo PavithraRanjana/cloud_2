@@ -11,7 +11,7 @@ import logging
 import os
 
 import boto3
-import pg8000.dbapi as pg8000
+import psycopg2
 
 logger = logging.getLogger("pricing_recalculation")
 logger.setLevel(logging.INFO)
@@ -82,9 +82,9 @@ def handler(event, context):
     logger.info("Pricing recalculation started")
 
     user, password = _db_credentials()
-    conn = pg8000.connect(
-        host=DB_HOST, port=int(DB_PORT), database=DB_NAME,
-        user=user, password=password, ssl_context=True,
+    conn = psycopg2.connect(
+        host=DB_HOST, port=int(DB_PORT), dbname=DB_NAME,
+        user=user, password=password, sslmode="require",
     )
     cursor = conn.cursor()
 

@@ -862,6 +862,12 @@ Resources:
                 Resource:
                   - !GetAtt NotificationsQueue.Arn
                   - !GetAtt NotificationsDLQ.Arn
+              - Sid: SES
+                Effect: Allow
+                Action:
+                  - ses:SendEmail
+                  - ses:SendRawEmail
+                Resource: '*'
 
   LambdaExecutionRole:
     Type: AWS::IAM::Role
@@ -1334,7 +1340,7 @@ Resources:
       ClusterName: !Sub '${EnvironmentName}-aerolink'
       ClusterSettings:
         - Name: containerInsights
-          Value: enabled
+          Value: enhanced
       CapacityProviders:
         - FARGATE
         - FARGATE_SPOT

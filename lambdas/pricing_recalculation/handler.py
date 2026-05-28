@@ -10,17 +10,31 @@ import json
 import logging
 import os
 
+import boto3
 import pg8000.dbapi as pg8000
 
 logger = logging.getLogger("pricing_recalculation")
 logger.setLevel(logging.INFO)
 
-# PostgreSQL connection parameters (matches docker-compose service)
+# PostgreSQL connection parameters
 DB_HOST = os.environ.get("DB_HOST", "postgres")
 DB_PORT = os.environ.get("DB_PORT", "5432")
 DB_NAME = os.environ.get("DB_NAME", "aerolink")
 DB_USER = os.environ.get("DB_USER", "aerolink")
-DB_PASSWORD = os.environ.get("DB_PASSWORD", "aerolink")
+
+# DB credentials live in Secrets Manager (managed by RDS). DB_SECRET_ARN points
+# at the rds!db-* secret. Fetched once per cold start. If unset, fall back to
+# DB_USER + DB_PASSWORD env vars for local dev.
+_DB_SECRET_ARN = os.environ.get("DB_SECRET_ARN", "")
+_secrets_client = boto3.client("secretsmanager") if _DB_SECRET_ARN else None
+
+
+def _db_credentials() -> tuple[str, str]:
+    if _secrets_client:
+        resp = _secrets_client.get_secret_value(SecretId=_DB_SECRET_ARN)
+        creds = json.loads(resp["SecretString"])
+        return creds.get("username", DB_USER), creds["password"]
+    return DB_USER, os.environ.get("DB_PASSWORD", "aerolink")
 
 # Pricing algorithm constants
 HIGH_DEMAND_THRESHOLD = 0.20   # <20% seats remaining -> price increase
@@ -67,9 +81,10 @@ def handler(event, context):
     """
     logger.info("Pricing recalculation started")
 
+    user, password = _db_credentials()
     conn = pg8000.connect(
         host=DB_HOST, port=int(DB_PORT), database=DB_NAME,
-        user=DB_USER, password=DB_PASSWORD,
+        user=user, password=password, ssl_context=True,
     )
     cursor = conn.cursor()
 

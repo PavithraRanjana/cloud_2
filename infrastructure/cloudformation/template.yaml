@@ -42,12 +42,6 @@ Parameters:
     Default: aerolink
     Description: Master username for the RDS PostgreSQL instance
 
-  DBPassword:
-    Type: String
-    NoEcho: true
-    MinLength: 8
-    Description: Master password for the RDS PostgreSQL instance
-
   DBInstanceClass:
     Type: String
     Default: db.t3.medium
@@ -568,7 +562,7 @@ Resources:
       DBInstanceClass: !Ref DBInstanceClass
       DBName: aerolink
       MasterUsername: !Ref DBUsername
-      MasterUserPassword: !Ref DBPassword
+      ManageMasterUserPassword: true
       AllocatedStorage: 20
       MaxAllocatedStorage: 100
       StorageType: gp3
@@ -731,6 +725,13 @@ Resources:
                 Resource:
                   - !Ref AppSecretsManagerArn
                   - !Ref StripeSecretsManagerArn
+                  - !GetAtt DBInstance.MasterUserSecret.SecretArn
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
 
   # Least-privilege IAM roles — one per service group based on actual AWS SDK usage.
   # api-gateway and auth-service make no direct AWS SDK calls.
@@ -898,6 +899,17 @@ Resources:
                 Action:
                   - cognito-idp:AdminAddUserToGroup
                 Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+              - Sid: DBSecret
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !GetAtt DBInstance.MasterUserSecret.SecretArn
+              - Sid: DBSecretKMS
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
 
   # ============================================================
   # ALB – Application Load Balancer (internal; fronted by API Gateway VPC Link)
@@ -1387,6 +1399,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1423,7 +1437,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: auth-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/0'
             - Name: AWS_REGION
@@ -1437,6 +1451,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1473,7 +1489,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: flight-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/1'
             - Name: AWS_REGION
@@ -1487,6 +1503,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1523,7 +1541,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: booking-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/2'
             - Name: FLIGHT_SERVICE_URL
@@ -1541,6 +1559,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1577,7 +1597,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: payment-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/3'
             - Name: BOOKING_SERVICE_URL
@@ -1595,6 +1615,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
             - Name: INTERNAL_API_KEY
               ValueFrom: !Sub '${AppSecretsManagerArn}:INTERNAL_API_KEY::'
             - Name: STRIPE_SECRET_KEY
@@ -1639,7 +1661,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: baggage-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/4'
             - Name: AWS_REGION
@@ -1653,6 +1675,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1689,7 +1713,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: checkin-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/5'
             - Name: BOOKING_SERVICE_URL
@@ -1709,6 +1733,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -1745,7 +1771,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: passenger-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/6'
             - Name: BOOKING_SERVICE_URL
@@ -1763,6 +1789,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
             - Name: INTERNAL_API_KEY
               ValueFrom: !Sub '${AppSecretsManagerArn}:INTERNAL_API_KEY::'
           LogConfiguration:
@@ -1801,7 +1829,7 @@ Resources:
             - Name: SERVICE_NAME
               Value: notification-service
             - Name: DATABASE_URL
-              Value: !Sub 'postgresql+asyncpg://${DBUsername}:${DBPassword}@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink'
+              Value: !Sub 'postgresql+asyncpg://${DBUsername}:__DB_PASSWORD__@${DBInstance.Endpoint.Address}:${DBInstance.Endpoint.Port}/aerolink?ssl=require'
             - Name: REDIS_URL
               Value: !Sub 'redis://${RedisReplicationGroup.PrimaryEndPoint.Address}:${RedisReplicationGroup.PrimaryEndPoint.Port}/7'
             - Name: AWS_REGION
@@ -1823,6 +1851,8 @@ Resources:
           Secrets:
             - Name: JWT_SECRET
               ValueFrom: !Sub '${AppSecretsManagerArn}:JWT_SECRET::'
+            - Name: DB_PASSWORD
+              ValueFrom: !Sub '${DBInstance.MasterUserSecret.SecretArn}:password::'
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -2497,7 +2527,9 @@ Resources:
           DB_PORT: !GetAtt DBInstance.Endpoint.Port
           DB_NAME: aerolink
           DB_USER: !Ref DBUsername
-          DB_PASSWORD: !Ref DBPassword
+          # Handler reads the password from this secret at cold start, surviving
+          # RDS-managed password rotation. See lambdas/pricing_recalculation/handler.py.
+          DB_SECRET_ARN: !GetAtt DBInstance.MasterUserSecret.SecretArn
       LoggingConfig:
         LogGroup: !Ref PricingRecalculationLogGroup
 

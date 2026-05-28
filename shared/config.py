@@ -1,3 +1,7 @@
+import os
+from urllib.parse import quote
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -8,6 +12,23 @@ class BaseConfig(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://aerolink:aerolink@localhost:5432/aerolink"
     database_sync_url: str = "postgresql://aerolink:aerolink@localhost:5432/aerolink"
+
+    @model_validator(mode="after")
+    def _interpolate_db_password(self):
+        # In production the DB password lives in Secrets Manager and is injected
+        # as the DB_PASSWORD env var by ECS. The DATABASE_URL we receive contains
+        # the placeholder __DB_PASSWORD__ so that the URL itself never carries a
+        # plaintext credential. URL-encode before substituting — RDS-managed
+        # passwords can contain reserved URL characters like ?, #, !, [, ].
+        pwd = os.environ.get("DB_PASSWORD")
+        if not pwd:
+            return self
+        encoded = quote(pwd, safe="")
+        if "__DB_PASSWORD__" in self.database_url:
+            self.database_url = self.database_url.replace("__DB_PASSWORD__", encoded)
+        if "__DB_PASSWORD__" in self.database_sync_url:
+            self.database_sync_url = self.database_sync_url.replace("__DB_PASSWORD__", encoded)
+        return self
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

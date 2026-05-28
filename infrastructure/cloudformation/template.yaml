@@ -105,6 +105,15 @@ Parameters:
     NoEcho: true
     Description: Google OAuth 2.0 client secret for Cognito social login (leave empty to disable)
 
+  LambdaInsightsLayerVersion:
+    Type: Number
+    Default: 53
+    Description: >-
+      Version number of the CloudWatch Lambda Insights extension layer for
+      x86_64 in this region. AWS publishes the layer at
+      arn:aws:lambda:${region}:580247275435:layer:LambdaInsightsExtension:${version}.
+      Bump when AWS releases a newer version.
+
   StripeSecretsManagerArn:
     Type: String
     Description: >-
@@ -900,6 +909,7 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/CloudWatchLambdaInsightsExecutionRolePolicy
       Policies:
         - PolicyName: LambdaServicePermissions
           PolicyDocument:
@@ -2480,6 +2490,8 @@ Resources:
       Timeout: 30
       MemorySize: 128
       Role: !GetAtt LambdaExecutionRole.Arn
+      Layers:
+        - !Sub 'arn:aws:lambda:${AWS::Region}:580247275435:layer:LambdaInsightsExtension:${LambdaInsightsLayerVersion}'
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: lambdas/notification_dispatch.zip
@@ -2507,6 +2519,8 @@ Resources:
       Timeout: 60
       MemorySize: 256
       Role: !GetAtt LambdaExecutionRole.Arn
+      Layers:
+        - !Sub 'arn:aws:lambda:${AWS::Region}:580247275435:layer:LambdaInsightsExtension:${LambdaInsightsLayerVersion}'
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: lambdas/boarding_pass_generator.zip
@@ -2535,6 +2549,8 @@ Resources:
       Timeout: 120
       MemorySize: 256
       Role: !GetAtt LambdaExecutionRole.Arn
+      Layers:
+        - !Sub 'arn:aws:lambda:${AWS::Region}:580247275435:layer:LambdaInsightsExtension:${LambdaInsightsLayerVersion}'
       Code:
         S3Bucket: !Ref LambdaCodeBucket
         S3Key: lambdas/pricing_recalculation.zip

@@ -3146,6 +3146,26 @@ Resources:
   # aws wafv2 associate-web-acl --web-acl-arn <WafArn> --resource-arn <ApiStageArn> --region us-east-1
 
   # ============================================================
+  # CloudWatch Application Signals discovery
+  # ============================================================
+  # Creating this service-linked role implicitly enables Application Signals
+  # discovery for the account, which is what unblocks the Service Map under
+  # CloudWatch -> Application Signals.
+  #
+  # NOTE: this role is account-global (singleton). On accounts where the
+  # role already exists — including from a prior CLI call of
+  # `aws application-signals start-discovery` — this resource will fail
+  # with "Service role name AWSServiceRoleForCloudWatchApplicationSignals
+  # has been taken in this account". In that case, deploy with this
+  # resource commented out (or skip it during updates with
+  # --resource-types AWS::* + a manual exclusion).
+  ApplicationSignalsDiscoveryRole:
+    Type: AWS::IAM::ServiceLinkedRole
+    Properties:
+      AWSServiceName: application-signals.cloudwatch.amazonaws.com
+      Description: Enables CloudWatch Application Signals service discovery for the account
+
+  # ============================================================
   # CloudWatch Dashboard — single-pane production overview
   # ============================================================
   ProductionDashboard:

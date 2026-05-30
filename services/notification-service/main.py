@@ -35,8 +35,14 @@ logger = structlog.get_logger()
 engine = create_db_engine(config.database_url)
 SessionFactory = create_session_factory(engine)
 
-# Sync engine for the background polling thread (avoids event-loop conflicts)
-_sync_db_url = config.database_url.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+# Sync engine for the background polling thread (avoids event-loop conflicts).
+# asyncpg uses ssl=require; psycopg2 needs sslmode=require for the same effect.
+_sync_db_url = (
+    config.database_url
+    .replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+    .replace("ssl=require", "sslmode=require")
+    .replace("ssl=true", "sslmode=require")
+)
 _sync_engine = create_engine(_sync_db_url, pool_pre_ping=True, pool_recycle=300)
 SyncSessionFactory = sessionmaker(bind=_sync_engine)
 

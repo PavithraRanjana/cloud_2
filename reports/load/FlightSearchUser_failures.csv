@@ -1,0 +1,12 @@
+Method,Name,Error,Occurrences
+GET,/api/v1/flights?origin&destination&date,RemoteDisconnected('Remote end closed connection without response'),1
+GET,/api/v1/flights?origin&destination&date,HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination&date'),150
+GET,/api/v1/flights?origin&destination&max_price,HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&max_price'),6
+GET,/api/v1/flights?origin&destination,HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination'),21
+GET,/api/v1/flights (seed lookup),HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (seed lookup)'),5
+GET,/api/v1/flights (all),HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (all)'),4
+GET,/api/v1/flights?origin&destination,HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination'),242
+GET,/api/v1/flights (all),HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights (all)'),102
+GET,/api/v1/flights (seed lookup),HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights (seed lookup)'),42
+GET,/api/v1/flights?origin&destination&date,HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&date'),11
+GET,/api/v1/flights?origin&destination&max_price,HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination&max_price'),86

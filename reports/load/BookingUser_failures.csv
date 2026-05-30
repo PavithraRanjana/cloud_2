@@ -1,0 +1,7 @@
+Method,Name,Error,Occurrences
+POST,/api/v1/bookings (create),HTTPError('401 Client Error: Unauthorized for url: /api/v1/bookings (create)'),1151
+POST,/api/v1/auth/register,CatchResponseError('register unexpected 503'),27
+POST,/api/v1/auth/login,CatchResponseError('login failed 503'),76
+GET,/api/v1/auth/validate,HTTPError('401 Client Error: Unauthorized for url: /api/v1/auth/validate'),421
+GET,/api/v1/flights (booking search),HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (booking search)'),3
+GET,/api/v1/bookings (list),HTTPError('401 Client Error: Unauthorized for url: /api/v1/bookings (list)'),805

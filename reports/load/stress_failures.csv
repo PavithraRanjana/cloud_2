@@ -1,0 +1,35 @@
+Method,Name,Error,Occurrences
+GET,/api/v1/flights?origin&destination&date,RemoteDisconnected('Remote end closed connection without response'),33
+GET,/api/v1/flights (seed lookup),RemoteDisconnected('Remote end closed connection without response'),9
+GET,/api/v1/flights?origin&destination&date,HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination&date'),610
+GET,/api/v1/flights?origin&destination&max_price,HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&max_price'),14
+GET,/health (gateway),RemoteDisconnected('Remote end closed connection without response'),15
+GET,/api/v1/flights?origin&destination,"ConnectionResetError(54, 'Connection reset by peer')",56
+GET,/api/v1/flights?origin&destination&max_price,"ConnectionResetError(54, 'Connection reset by peer')",15
+GET,/api/v1/flights (seed lookup),"ConnectionResetError(54, 'Connection reset by peer')",14
+GET,/api/v1/flights (all),"ConnectionResetError(54, 'Connection reset by peer')",20
+GET,/health (gateway),"ConnectionResetError(54, 'Connection reset by peer')",7
+GET,/api/v1/flights?origin&destination,HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination'),35
+GET,/api/v1/flights?origin&destination,RemoteDisconnected('Remote end closed connection without response'),59
+GET,/api/v1/flights (seed lookup),"SSLError(SSLZeroReturnError(6, 'TLS/SSL connection has been closed (EOF) (_ssl.c:1017)'))",5
+GET,/api/v1/flights?origin&destination&date,"SSLError(SSLZeroReturnError(6, 'TLS/SSL connection has been closed (EOF) (_ssl.c:1017)'))",21
+GET,/api/v1/flights (all),"SSLError(SSLZeroReturnError(6, 'TLS/SSL connection has been closed (EOF) (_ssl.c:1017)'))",4
+GET,/api/v1/flights (seed lookup),HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (seed lookup)'),4
+GET,/api/v1/flights?origin&destination&max_price,RemoteDisconnected('Remote end closed connection without response'),23
+GET,/api/v1/flights (seed lookup),"SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)'))",7
+GET,/health (gateway),"SSLError(SSLZeroReturnError(6, 'TLS/SSL connection has been closed (EOF) (_ssl.c:1017)'))",4
+GET,/api/v1/flights?origin&destination&date,"SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)'))",20
+GET,/health (gateway),"SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)'))",10
+GET,/api/v1/flights (all),"SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)'))",9
+GET,/api/v1/flights (all),HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (all)'),16
+GET,/api/v1/flights?origin&destination,HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination'),998
+GET,/api/v1/flights (all),HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights (all)'),414
+GET,/api/v1/flights (seed lookup),HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights (seed lookup)'),176
+GET,/api/v1/flights?origin&destination,"SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)'))",32
+GET,/api/v1/flights?origin&destination&max_price,"SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1017)'))",12
+GET,/api/v1/flights (all),RemoteDisconnected('Remote end closed connection without response'),30
+GET,/api/v1/flights?origin&destination&max_price,"SSLError(SSLZeroReturnError(6, 'TLS/SSL connection has been closed (EOF) (_ssl.c:1017)'))",16
+GET,/api/v1/flights?origin&destination&date,HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&date'),36
+GET,/api/v1/flights?origin&destination&max_price,HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination&max_price'),399
+GET,/api/v1/flights?origin&destination,"SSLError(SSLZeroReturnError(6, 'TLS/SSL connection has been closed (EOF) (_ssl.c:1017)'))",31
+GET,/api/v1/flights?origin&destination&date,"ConnectionResetError(54, 'Connection reset by peer')",40

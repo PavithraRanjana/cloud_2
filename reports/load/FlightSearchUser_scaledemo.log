@@ -1,0 +1,39 @@
+[2026-05-30 11:41:17,397] Pavithras-MacBook-Pro/INFO/locust.main: Starting Locust 2.43.4
+[2026-05-30 11:41:17,400] Pavithras-MacBook-Pro/INFO/locust.main: Run time limit set to 420 seconds
+[2026-05-30 11:41:17,401] Pavithras-MacBook-Pro/INFO/locust.runners: Ramping to 100 users at a rate of 10.00 per second
+[2026-05-30 11:41:26,441] Pavithras-MacBook-Pro/INFO/locust.runners: All users spawned: {"FlightSearchUser": 100} (100 total users)
+[2026-05-30 11:48:17,037] Pavithras-MacBook-Pro/INFO/locust.main: --run-time limit reached, shutting down
+[2026-05-30 11:48:17,190] Pavithras-MacBook-Pro/INFO/locust.main: writing html report to file: reports/load/FlightSearchUser_scaledemo.html
+[2026-05-30 11:48:17,192] Pavithras-MacBook-Pro/INFO/locust.main: Shutting down (exit code 1)
+Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+GET      /api/v1/flights (all)                                                           2064     0(0.00%) |   1786     242    5569   1000 |    4.92        0.00
+GET      /api/v1/flights (seed lookup)                                                    959     2(0.21%) |   1699     235    5362    930 |    2.28        0.00
+GET      /api/v1/flights?origin&destination                                              5118     7(0.14%) |   1769     236    5445   1000 |   12.19        0.02
+GET      /api/v1/flights?origin&destination&date                                         2937     3(0.10%) |   1773     235    5418   1000 |    7.00        0.01
+GET      /api/v1/flights?origin&destination&max_price                                    2078     2(0.10%) |   1816     236    5350   1100 |    4.95        0.00
+GET      /health (gateway)                                                               1017     0(0.00%) |    408     222    2723    430 |    2.42        0.00
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                     14173    14(0.10%) |   1677     222    5569    870 |   33.77        0.03
+
+Response time percentiles (approximated)
+Type     Name                                                                                  50%    66%    75%    80%    90%    95%    98%    99%  99.9% 99.99%   100% # reqs
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+GET      /api/v1/flights (all)                                                                1000   2600   3300   3500   4100   4500   4800   5000   5500   5600   5600   2064
+GET      /api/v1/flights (seed lookup)                                                         930   2400   3200   3400   4000   4400   4700   4900   5400   5400   5400    959
+GET      /api/v1/flights?origin&destination                                                   1000   2700   3300   3500   4000   4400   4800   4900   5300   5400   5400   5118
+GET      /api/v1/flights?origin&destination&date                                              1000   2700   3300   3500   4100   4500   4800   4900   5300   5400   5400   2937
+GET      /api/v1/flights?origin&destination&max_price                                         1100   2800   3400   3500   4100   4400   4700   4900   5300   5400   5400   2078
+GET      /health (gateway)                                                                     430    460    480    500    560    610    720    920   1400   2700   2700   1017
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+         Aggregated                                                                            870   2200   3200   3500   4000   4400   4700   4900   5300   5600   5600  14173
+
+Error report
+# occurrences      Error                                                                                               
+------------------|---------------------------------------------------------------------------------------------------------------------------------------------
+7                  GET /api/v1/flights?origin&destination: HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination')
+2                  GET /api/v1/flights (seed lookup): HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (seed lookup)')
+3                  GET /api/v1/flights?origin&destination&date: HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&date')
+2                  GET /api/v1/flights?origin&destination&max_price: HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&max_price')
+------------------|---------------------------------------------------------------------------------------------------------------------------------------------
+

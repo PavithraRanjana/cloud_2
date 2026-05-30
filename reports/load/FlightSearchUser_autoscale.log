@@ -1,0 +1,45 @@
+[2026-05-30 11:25:58,792] Pavithras-MacBook-Pro/INFO/locust.main: Starting Locust 2.43.4
+[2026-05-30 11:25:58,803] Pavithras-MacBook-Pro/INFO/locust.main: Run time limit set to 480 seconds
+[2026-05-30 11:25:58,804] Pavithras-MacBook-Pro/INFO/locust.runners: Ramping to 500 users at a rate of 25.00 per second
+[2026-05-30 11:26:17,878] Pavithras-MacBook-Pro/INFO/locust.runners: All users spawned: {"FlightSearchUser": 500} (500 total users)
+[2026-05-30 11:33:58,416] Pavithras-MacBook-Pro/INFO/locust.main: --run-time limit reached, shutting down
+[2026-05-30 11:33:58,661] Pavithras-MacBook-Pro/INFO/locust.main: writing html report to file: reports/load/FlightSearchUser_autoscale.html
+[2026-05-30 11:33:58,664] Pavithras-MacBook-Pro/INFO/locust.main: Shutting down (exit code 1)
+Type     Name                                                                          # reqs      # fails |    Avg     Min     Max    Med |   req/s  failures/s
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+GET      /api/v1/flights (all)                                                           2272  473(20.82%) |  13943     268   46292  12000 |    4.74        0.99
+GET      /api/v1/flights (seed lookup)                                                   1160  222(19.14%) |  13862     250   48743  12000 |    2.42        0.46
+GET      /api/v1/flights?origin&destination                                              5821 1210(20.79%) |  13947     240   54782  12000 |   12.15        2.53
+GET      /api/v1/flights?origin&destination&date                                         3352  729(21.75%) |  14155     233   48737  12000 |    6.99        1.52
+GET      /api/v1/flights?origin&destination&max_price                                    2277  467(20.51%) |  13967     246   43454  11000 |    4.75        0.97
+GET      /health (gateway)                                                               1163     0(0.00%) |    477     220   26077    440 |    2.43        0.00
+--------|----------------------------------------------------------------------------|-------|-------------|-------|-------|-------|-------|--------|-----------
+         Aggregated                                                                     16045 3101(19.33%) |  13010     220   54782  11000 |   33.48        6.47
+
+Response time percentiles (approximated)
+Type     Name                                                                                  50%    66%    75%    80%    90%    95%    98%    99%  99.9% 99.99%   100% # reqs
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+GET      /api/v1/flights (all)                                                               12000  13000  15000  29000  29000  29000  29000  30000  37000  46000  46000   2272
+GET      /api/v1/flights (seed lookup)                                                       12000  13000  15000  26000  29000  29000  29000  29000  37000  49000  49000   1160
+GET      /api/v1/flights?origin&destination                                                  12000  13000  15000  29000  29000  29000  29000  29000  40000  55000  55000   5821
+GET      /api/v1/flights?origin&destination&date                                             12000  13000  15000  29000  29000  29000  29000  29000  39000  49000  49000   3352
+GET      /api/v1/flights?origin&destination&max_price                                        11000  13000  15000  28000  29000  29000  29000  29000  37000  43000  43000   2277
+GET      /health (gateway)                                                                     440    460    470    490    540    730   1200   1700   7800  26000  26000   1163
+--------|--------------------------------------------------------------------------------|--------|------|------|------|------|------|------|------|------|------|------|------
+         Aggregated                                                                          11000  13000  14000  23000  29000  29000  29000  29000  38000  49000  55000  16045
+
+Error report
+# occurrences      Error                                                                                               
+------------------|---------------------------------------------------------------------------------------------------------------------------------------------
+11                 GET /api/v1/flights (all): HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (all)')
+28                 GET /api/v1/flights?origin&destination: HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination')
+462                GET /api/v1/flights (all): HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights (all)')
+1182               GET /api/v1/flights?origin&destination: HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination')
+706                GET /api/v1/flights?origin&destination&date: HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination&date')
+452                GET /api/v1/flights?origin&destination&max_price: HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights?origin&destination&max_price')
+219                GET /api/v1/flights (seed lookup): HTTPError('503 Server Error: Service Unavailable for url: /api/v1/flights (seed lookup)')
+23                 GET /api/v1/flights?origin&destination&date: HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&date')
+15                 GET /api/v1/flights?origin&destination&max_price: HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights?origin&destination&max_price')
+3                  GET /api/v1/flights (seed lookup): HTTPError('502 Server Error: Bad Gateway for url: /api/v1/flights (seed lookup)')
+------------------|---------------------------------------------------------------------------------------------------------------------------------------------
+

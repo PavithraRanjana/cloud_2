@@ -1,0 +1,6 @@
+Method,Name,Error,Occurrences
+GET,/api/v1/baggage/booking/{booking_id},CatchResponseError('unexpected 401'),1701
+POST,/api/v1/auth/register,CatchResponseError('register unexpected 503'),313
+POST,/api/v1/auth/login,CatchResponseError('login failed 503'),139
+POST,/api/v1/auth/register,CatchResponseError('register unexpected 0'),2
+GET,/api/v1/baggage/{tag_number},CatchResponseError('unexpected 401'),3371

@@ -18,8 +18,9 @@ build/
 htmlcov/
 localstack_data/
 postgres_data/
-reports/
-!reports/load/
+reports/htmlcov/
+reports/coverage/
+reports/scannerwork/
 .scannerwork/
 .coverage*
 *.bak

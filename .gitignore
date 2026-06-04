@@ -24,3 +24,6 @@ reports/scannerwork/
 .scannerwork/
 .coverage*
 *.bak
+
+# Microsoft Office temp/lock files
+~$*

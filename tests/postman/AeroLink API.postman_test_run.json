@@ -1,0 +1,1367 @@
+{
+	"id": "35dacdf8-67aa-4d7f-b4ff-a630ed4c9129",
+	"name": "AeroLink API",
+	"timestamp": "2026-06-03T11:35:12.944Z",
+	"collection_id": "39465605-d07454f2-a9e7-4afb-bd47-0beae0f40a29",
+	"folder_id": 0,
+	"environment_id": "39465605-68282dea-8364-4a37-94dd-d4271e7a0cec",
+	"totalPass": 45,
+	"delay": 0,
+	"persist": true,
+	"status": "finished",
+	"startedAt": "2026-06-03T11:34:56.592Z",
+	"totalFail": 25,
+	"results": [
+		{
+			"id": "5a3d2efc-dfa7-4d70-8a79-3ce0074c7a30",
+			"name": "Gateway health",
+			"url": "https://d360csr5wvytoh.cloudfront.net/health",
+			"time": 756,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": true,
+				"reports healthy": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 1,
+					"fail": 0
+				},
+				"reports healthy": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				756
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": true,
+					"reports healthy": false
+				}
+			]
+		},
+		{
+			"id": "d079eeca-bb4d-41d0-af35-615ed4e5edcd",
+			"name": "Register (new user)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/register",
+			"time": 830,
+			"responseCode": {
+				"code": 201,
+				"name": "Created"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 201 or 409 (duplicate)": true,
+				"returns id and email": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 201 or 409 (duplicate)": {
+					"pass": 1,
+					"fail": 0
+				},
+				"returns id and email": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				830
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 201 or 409 (duplicate)": true,
+					"returns id and email": true
+				}
+			]
+		},
+		{
+			"id": "6bd1067d-6ab0-4a8f-a422-697c7fea763a",
+			"name": "Login (passenger)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/login",
+			"time": 521,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false,
+				"returns access_token": false,
+				"returns refresh_token": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				},
+				"returns access_token": {
+					"pass": 0,
+					"fail": 1
+				},
+				"returns refresh_token": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				521
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false,
+					"returns access_token": false,
+					"returns refresh_token": false
+				}
+			]
+		},
+		{
+			"id": "a4267176-7b9e-4718-ac85-01d893171aa0",
+			"name": "Login (admin)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/login",
+			"time": 391,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				391
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false
+				}
+			]
+		},
+		{
+			"id": "05debce0-71ab-4023-b5b7-537912cc2b46",
+			"name": "Get current user (/me)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/me",
+			"time": 431,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false,
+				"returns user payload": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				},
+				"returns user payload": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				431
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false,
+					"returns user payload": false
+				}
+			]
+		},
+		{
+			"id": "99034969-ceff-4af9-85aa-3e6c2a7bd997",
+			"name": "Refresh access token",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/refresh",
+			"time": 476,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				476
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false
+				}
+			]
+		},
+		{
+			"id": "909c4a3d-ed8f-4d13-88f1-bffaf7fb525c",
+			"name": "Logout",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/logout",
+			"time": 404,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200 or 204": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200 or 204": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				404
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200 or 204": false
+				}
+			]
+		},
+		{
+			"id": "a479111e-2a7c-4117-8536-a5e67011d7c5",
+			"name": "Forgot password",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/forgot-password",
+			"time": 279,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				279
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "e330bfe1-132a-4925-a8c7-df8d569d1061",
+			"name": "Search flights (public)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/flights?origin=JFK&destination=LAX&limit=10",
+			"time": 554,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": true,
+				"returns items array": true,
+				"flight has expected fields": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 1,
+					"fail": 0
+				},
+				"returns items array": {
+					"pass": 1,
+					"fail": 0
+				},
+				"flight has expected fields": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				554
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": true,
+					"returns items array": true,
+					"flight has expected fields": true
+				}
+			]
+		},
+		{
+			"id": "19c5e03f-6700-4abd-b793-5e31b9700522",
+			"name": "Get flight by ID",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/flights/",
+			"time": 220,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false,
+				"id matches request": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				},
+				"id matches request": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				220
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false,
+					"id matches request": false
+				}
+			]
+		},
+		{
+			"id": "158f3ddb-d225-4c54-a871-bfd0d8afe2a8",
+			"name": "Create flight (admin)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/flights",
+			"time": 470,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 201 or 403 (not admin)": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 201 or 403 (not admin)": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				470
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 201 or 403 (not admin)": false
+				}
+			]
+		},
+		{
+			"id": "ddf9c108-e189-42b1-bc3e-5472eaa6ed6a",
+			"name": "Create booking",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/bookings",
+			"time": 415,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 201": false,
+				"booking has PENDING status": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 201": {
+					"pass": 0,
+					"fail": 1
+				},
+				"booking has PENDING status": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				415
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 201": false,
+					"booking has PENDING status": false
+				}
+			]
+		},
+		{
+			"id": "6f929cab-9600-47b9-8e4b-aef5762f8f7e",
+			"name": "List my bookings",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/bookings/me",
+			"time": 432,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				432
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false
+				}
+			]
+		},
+		{
+			"id": "94afb03a-9c26-490a-b7f4-2eb95abf9161",
+			"name": "Get booking by ID",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/bookings/",
+			"time": 217,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				217
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false
+				}
+			]
+		},
+		{
+			"id": "d2fd991b-84ce-4041-9ffe-9657f0a06ed7",
+			"name": "Cancel booking (compensating transaction)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/bookings//cancel",
+			"time": 281,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false,
+				"status is CANCELLED": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				},
+				"status is CANCELLED": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				281
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false,
+					"status is CANCELLED": false
+				}
+			]
+		},
+		{
+			"id": "c3184cba-bd0e-4d62-a785-374d8cd794be",
+			"name": "Create payment intent",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/payments/intent",
+			"time": 217,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200 or 201": false,
+				"returns client secret": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200 or 201": {
+					"pass": 0,
+					"fail": 1
+				},
+				"returns client secret": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				217
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200 or 201": false,
+					"returns client secret": false
+				}
+			]
+		},
+		{
+			"id": "f83aa308-6ba2-47bb-8c12-070337aac263",
+			"name": "Get payment for booking",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/payments/booking/",
+			"time": 288,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				288
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "8f904c29-fa50-4b21-8b30-d183d103d7a6",
+			"name": "Register baggage",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/baggage",
+			"time": 414,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				414
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "515a164e-484d-4e40-bf45-abb8c1c983dc",
+			"name": "List baggage for booking",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/baggage/booking/",
+			"time": 413,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				413
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "849cd229-ae91-4b90-8b6b-025c63016572",
+			"name": "Update baggage status (admin/staff)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/baggage//status",
+			"time": 401,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				401
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "6bf3d89c-9a0f-419b-8aa7-ebf1c5cd5809",
+			"name": "Check in",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/checkin",
+			"time": 410,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				410
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "b5561233-7c04-4ede-a270-969687c67ef8",
+			"name": "Get check-in by booking",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/checkin/",
+			"time": 274,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				274
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "1cc24182-4dd5-41fa-a9f9-285c30fe72bb",
+			"name": "Get boarding pass (PDF link)",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/checkin//boarding-pass",
+			"time": 309,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				309
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "27aff20d-1cd6-4d43-93d5-c9eedf40f7c9",
+			"name": "Get passenger profile",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/passengers/profile",
+			"time": 326,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				326
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "f62bf3b0-dee2-4c0b-8be5-b78f057dcde3",
+			"name": "Update passenger profile",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/passengers/profile",
+			"time": 300,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				300
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "b3bc7d2c-1475-4269-9b9e-54fd4e6f831c",
+			"name": "List loyalty awards",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/passengers/me/awards",
+			"time": 471,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				471
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "ba28439f-f78d-4b9b-b066-9d34f321a01c",
+			"name": "List notifications",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/notifications",
+			"time": 228,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"status is 200": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"status is 200": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				228
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"status is 200": false
+				}
+			]
+		},
+		{
+			"id": "a7dc7b92-ab43-4472-a7d4-219711086625",
+			"name": "Mark notification as read",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/notifications//read",
+			"time": 227,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				227
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "fd7b2e85-9905-40f5-b75e-936f8007e2f4",
+			"name": "Delete notification",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/notifications/",
+			"time": 403,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				403
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "5705c137-c5ba-4e26-b149-a662757c1ba4",
+			"name": "1. Register a new user",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/register",
+			"time": 543,
+			"responseCode": {
+				"code": 201,
+				"name": "Created"
+			},
+			"tests": {
+				"response has a body": true,
+				"register returns 201": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"register returns 201": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				543
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"register returns 201": true
+				}
+			]
+		},
+		{
+			"id": "4075cbd6-9e18-4547-8b58-f5e95386eac2",
+			"name": "2. Log in",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/auth/login",
+			"time": 451,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"login returns 200": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"login returns 200": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				451
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"login returns 200": false
+				}
+			]
+		},
+		{
+			"id": "f2b83ebb-7135-4ffc-a73c-04e37382a5d5",
+			"name": "3. Search flights",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/flights?origin=JFK&destination=LAX&limit=5",
+			"time": 268,
+			"responseCode": {
+				"code": 200,
+				"name": "OK"
+			},
+			"tests": {
+				"response has a body": true,
+				"returns at least one flight": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"returns at least one flight": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				268
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"returns at least one flight": true
+				}
+			]
+		},
+		{
+			"id": "ca78fa0f-5fb0-46a2-85ea-92eca67f7c39",
+			"name": "4. Create booking",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/bookings",
+			"time": 423,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"booking created": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"booking created": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				423
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"booking created": false
+				}
+			]
+		},
+		{
+			"id": "2bf3b26c-6d76-4f9d-9680-322bca0eaddf",
+			"name": "5. Create payment intent",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/payments/intent",
+			"time": 229,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"payment intent created": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"payment intent created": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				229
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"payment intent created": false
+				}
+			]
+		},
+		{
+			"id": "153da06f-fcae-4b39-a80b-60ff4e51c1d7",
+			"name": "6. Check in",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/checkin",
+			"time": 420,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				420
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "a8605526-09d8-4edc-8d6b-25e50487645a",
+			"name": "7. Register baggage",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/baggage",
+			"time": 410,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				}
+			},
+			"times": [
+				410
+			],
+			"allTests": [
+				{
+					"response has a body": true
+				}
+			]
+		},
+		{
+			"id": "e95aa2f8-c699-47d5-be4f-fd734517048a",
+			"name": "8. Fetch notifications",
+			"url": "https://d360csr5wvytoh.cloudfront.net/api/v1/notifications",
+			"time": 404,
+			"responseCode": {
+				"code": 401,
+				"name": "Unauthorized"
+			},
+			"tests": {
+				"response has a body": true,
+				"notifications endpoint reachable": false
+			},
+			"testPassFailCounts": {
+				"response has a body": {
+					"pass": 1,
+					"fail": 0
+				},
+				"notifications endpoint reachable": {
+					"pass": 0,
+					"fail": 1
+				}
+			},
+			"times": [
+				404
+			],
+			"allTests": [
+				{
+					"response has a body": true,
+					"notifications endpoint reachable": false
+				}
+			]
+		}
+	],
+	"count": 1,
+	"totalTime": 14506,
+	"collection": {
+		"requests": [
+			{
+				"id": "5a3d2efc-dfa7-4d70-8a79-3ce0074c7a30",
+				"method": "GET"
+			},
+			{
+				"id": "d079eeca-bb4d-41d0-af35-615ed4e5edcd",
+				"method": "POST"
+			},
+			{
+				"id": "6bd1067d-6ab0-4a8f-a422-697c7fea763a",
+				"method": "POST"
+			},
+			{
+				"id": "a4267176-7b9e-4718-ac85-01d893171aa0",
+				"method": "POST"
+			},
+			{
+				"id": "05debce0-71ab-4023-b5b7-537912cc2b46",
+				"method": "GET"
+			},
+			{
+				"id": "99034969-ceff-4af9-85aa-3e6c2a7bd997",
+				"method": "POST"
+			},
+			{
+				"id": "909c4a3d-ed8f-4d13-88f1-bffaf7fb525c",
+				"method": "POST"
+			},
+			{
+				"id": "a479111e-2a7c-4117-8536-a5e67011d7c5",
+				"method": "POST"
+			},
+			{
+				"id": "e330bfe1-132a-4925-a8c7-df8d569d1061",
+				"method": "GET"
+			},
+			{
+				"id": "19c5e03f-6700-4abd-b793-5e31b9700522",
+				"method": "GET"
+			},
+			{
+				"id": "158f3ddb-d225-4c54-a871-bfd0d8afe2a8",
+				"method": "POST"
+			},
+			{
+				"id": "ddf9c108-e189-42b1-bc3e-5472eaa6ed6a",
+				"method": "POST"
+			},
+			{
+				"id": "6f929cab-9600-47b9-8e4b-aef5762f8f7e",
+				"method": "GET"
+			},
+			{
+				"id": "94afb03a-9c26-490a-b7f4-2eb95abf9161",
+				"method": "GET"
+			},
+			{
+				"id": "d2fd991b-84ce-4041-9ffe-9657f0a06ed7",
+				"method": "POST"
+			},
+			{
+				"id": "c3184cba-bd0e-4d62-a785-374d8cd794be",
+				"method": "POST"
+			},
+			{
+				"id": "f83aa308-6ba2-47bb-8c12-070337aac263",
+				"method": "GET"
+			},
+			{
+				"id": "8f904c29-fa50-4b21-8b30-d183d103d7a6",
+				"method": "POST"
+			},
+			{
+				"id": "515a164e-484d-4e40-bf45-abb8c1c983dc",
+				"method": "GET"
+			},
+			{
+				"id": "849cd229-ae91-4b90-8b6b-025c63016572",
+				"method": "PATCH"
+			},
+			{
+				"id": "6bf3d89c-9a0f-419b-8aa7-ebf1c5cd5809",
+				"method": "POST"
+			},
+			{
+				"id": "b5561233-7c04-4ede-a270-969687c67ef8",
+				"method": "GET"
+			},
+			{
+				"id": "1cc24182-4dd5-41fa-a9f9-285c30fe72bb",
+				"method": "GET"
+			},
+			{
+				"id": "27aff20d-1cd6-4d43-93d5-c9eedf40f7c9",
+				"method": "GET"
+			},
+			{
+				"id": "f62bf3b0-dee2-4c0b-8be5-b78f057dcde3",
+				"method": "PATCH"
+			},
+			{
+				"id": "b3bc7d2c-1475-4269-9b9e-54fd4e6f831c",
+				"method": "GET"
+			},
+			{
+				"id": "ba28439f-f78d-4b9b-b066-9d34f321a01c",
+				"method": "GET"
+			},
+			{
+				"id": "a7dc7b92-ab43-4472-a7d4-219711086625",
+				"method": "PATCH"
+			},
+			{
+				"id": "fd7b2e85-9905-40f5-b75e-936f8007e2f4",
+				"method": "DELETE"
+			},
+			{
+				"id": "5705c137-c5ba-4e26-b149-a662757c1ba4",
+				"method": "POST"
+			},
+			{
+				"id": "4075cbd6-9e18-4547-8b58-f5e95386eac2",
+				"method": "POST"
+			},
+			{
+				"id": "f2b83ebb-7135-4ffc-a73c-04e37382a5d5",
+				"method": "GET"
+			},
+			{
+				"id": "ca78fa0f-5fb0-46a2-85ea-92eca67f7c39",
+				"method": "POST"
+			},
+			{
+				"id": "2bf3b26c-6d76-4f9d-9680-322bca0eaddf",
+				"method": "POST"
+			},
+			{
+				"id": "153da06f-fcae-4b39-a80b-60ff4e51c1d7",
+				"method": "POST"
+			},
+			{
+				"id": "a8605526-09d8-4edc-8d6b-25e50487645a",
+				"method": "POST"
+			},
+			{
+				"id": "e95aa2f8-c699-47d5-be4f-fd734517048a",
+				"method": "GET"
+			}
+		]
+	}
+}
